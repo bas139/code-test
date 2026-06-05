@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Terminal, LayoutDashboard, Trophy, BookOpen, GraduationCap, Zap, Sun, Moon, LogIn } from 'lucide-react';
+import { Terminal, LayoutDashboard, Trophy, BookOpen, GraduationCap, Zap, Sun, Moon, LogIn, PlayCircle } from 'lucide-react';
 import { getLevelInfo } from '../utils/gamification';
 import { useAuth } from '../contexts/AuthContext';
 import { useUser } from '../contexts/UserContext';
@@ -38,7 +38,11 @@ export default function Navbar() {
         </Link>
         <Link to="/courses" className={`nav-link ${isActive('/courses')}`}>
           <GraduationCap size={18} style={{ display: 'inline', marginRight: '4px' }} />
-          Courses
+          Skill Tree
+        </Link>
+        <Link to="/videos" className={`nav-link ${isActive('/videos')}`}>
+          <PlayCircle size={18} style={{ display: 'inline', marginRight: '4px' }} />
+          Video Courses
         </Link>
         <Link to="/codebox" className={`nav-link ${isActive('/codebox')}`}>
           <Terminal size={18} style={{ display: 'inline', marginRight: '4px' }} />
