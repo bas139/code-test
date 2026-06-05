@@ -29,8 +29,8 @@ export const setupAutocomplete = (monaco) => {
         { label: 'gets', kind: 3, insertText: 'gets(${1:str});', insertTextRules: rules, range },
         
         // C++ I/O
-        { label: 'cout', kind: 15, insertText: 'cout << ${1:var} << endl;', insertTextRules: rules, range },
-        { label: 'cin', kind: 15, insertText: 'cin >> ${1:var};', insertTextRules: rules, range },
+        { label: 'cout', kind: 15, insertText: 'cout << ${1} << endl;', insertTextRules: rules, range },
+        { label: 'cin', kind: 15, insertText: 'cin >> ${1};', insertTextRules: rules, range },
         { label: 'endl', kind: 15, insertText: 'endl', insertTextRules: rules, range },
         { label: 'getline', kind: 3, insertText: 'getline(cin, ${1:str});', insertTextRules: rules, range },
         
