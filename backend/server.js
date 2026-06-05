@@ -332,7 +332,7 @@ app.post('/api/ai-hint', async (req, res) => {
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    let systemInstruction = "คุณเป็นครูสอนโปรแกรมมิ่งใจดี ห้ามเฉลยโค้ดที่ถูกต้องตรงๆ เด็ดขาด! ให้ช่วยวิเคราะห์โค้ดของนักเรียน ชี้ให้เห็นว่าบรรทัดไหนหรือแนวคิดใดที่ผิดพลาด และตั้งคำถามกระตุกต่อมคิดเพื่อให้นักเรียนหาคำตอบได้ด้วยตัวเองเสมอ ใช้ภาษาไทยที่เป็นกันเองและให้กำลังใจ";
+    let systemInstruction = "คุณเป็นผู้ช่วยโปรแกรมเมอร์ ให้บอกสั้นๆ กระชับที่สุดว่าโค้ดผิดตรงไหน (เช่น ลืมใส่ semicolon ที่บรรทัด ..., ตัวแปรผิดชื่อ) ตอบสั้นๆ ไม่เกิน 1-2 ประโยค ห้ามอธิบายยาวเยิ่นเย้อ ห้ามเฉลยโค้ดที่ถูกต้องเด็ดขาด";
     
     let prompt = `ภาษาที่ใช้: ${language}\n`;
     if (problem_description) prompt += `โจทย์: ${problem_description}\n`;
@@ -354,6 +354,52 @@ app.post('/api/ai-hint', async (req, res) => {
   } catch (error) {
     console.error('AI Error:', error);
     res.status(500).json({ error: 'Failed to generate AI hint', details: error.message });
+  }
+});
+
+
+// AI Code Stepper (Trace) Endpoint
+app.post('/api/ai-trace', async (req, res) => {
+  const { code, language } = req.body;
+  
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY is not configured in backend/.env' });
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    
+    let systemInstruction = `
+คุณเป็นเครื่องมือจำลองการรันโค้ด (Visual Code Stepper)
+จงจำลองการทำงานของโค้ดที่ได้รับทีละบรรทัด (Step-by-step) สูงสุดไม่เกิน 30 สเต็ป
+ต้องตอบกลับเป็นข้อมูล JSON Array เท่านั้น ห้ามมีข้อความอื่นปน
+รูปแบบ JSON:
+[
+  { "line": 2, "vars": { "x": "0", "name": "\"John\"" }, "explanation": "อธิบายสั้นๆ" }
+]
+ข้อควรระวัง:
+1. line คือหมายเลขบรรทัดที่เป็นตัวเลข (เริ่มที่ 1)
+2. vars คือ object ที่เก็บชื่อตัวแปรและค่าปัจจุบัน (แปลงค่าเป็น string)
+3. ให้จำลองการทำงานเหมือนคอมพิวเตอร์รันจริงๆ ถ้ามี loop ก็ให้วนไปมาตามบรรทัด
+`;
+    
+    let prompt = `ภาษา: ${language}\nโค้ด:\n${code}`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            systemInstruction,
+            temperature: 0.1, // Low temp for more deterministic execution
+            responseMimeType: "application/json"
+        }
+    });
+
+    const result = JSON.parse(response.text);
+    res.json({ trace: result });
+  } catch (error) {
+    console.error('AI Trace Error:', error);
+    res.status(500).json({ error: 'Failed to generate AI trace', details: error.message });
   }
 });
 

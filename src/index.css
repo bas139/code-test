@@ -162,3 +162,9 @@ button {
   padding-left: 20px;
   opacity: 0.9;
 }
+
+/* Stepper Highlight Line */
+.current-execution-line {
+  background-color: rgba(250, 204, 21, 0.2) !important;
+  border-left: 4px solid #facc15 !important;
+}

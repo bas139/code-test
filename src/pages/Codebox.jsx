@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Editor, { useMonaco } from '@monaco-editor/react';
-import { Play, Loader2, Code2, Terminal as TerminalIcon, Settings, ChevronDown, Upload, Square, Sparkles, XCircle, ArrowLeft, RefreshCw, MessageSquare } from 'lucide-react';
+import { Play, Loader2, Code2, Terminal as TerminalIcon, Settings, ChevronDown, Upload, Square, Sparkles, XCircle, ArrowLeft, RefreshCw, MessageSquare, Eye, StepForward, StepBack, Pause } from 'lucide-react';
 import { defineMonacoTheme } from '../utils/monacoTheme';
 import { setupAutocomplete } from '../utils/autocomplete';
 import { Terminal as XTerminal } from '@xterm/xterm';
@@ -26,6 +26,10 @@ export default function Codebox() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [isStepperMode, setIsStepperMode] = useState(false);
+  const [stepperData, setStepperData] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isPlayingStepper, setIsPlayingStepper] = useState(false);
 
   const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -37,6 +41,7 @@ export default function Codebox() {
   const socketRef = useRef(null);
   const currentLineRef = useRef('');
   const isFinishedRef = useRef(false);
+  const stepperDecorationsRef = useRef(null);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -161,6 +166,7 @@ export default function Codebox() {
     editorRef.current = editor;
     monacoRef.current = monaco;
     errorDecorationsRef.current = editor.createDecorationsCollection([]);
+    stepperDecorationsRef.current = editor.createDecorationsCollection([]);
   };
 
   const handleLanguageChange = (e) => {
@@ -174,6 +180,77 @@ export default function Codebox() {
       if (errorDecorationsRef.current) errorDecorationsRef.current.set([]);
     }
   };
+
+  
+  const handleStartStepper = async () => {
+    setIsAiLoading(true);
+    setAiError('');
+    setIsStepperMode(false);
+    
+    try {
+      const apiUrl = window.location.port === '5173' ? 'http://localhost:3001/api/ai-trace' : `${window.location.origin}/api/ai-trace`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, language })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to get AI trace');
+      
+      setStepperData(data.trace);
+      setCurrentStep(0);
+      setIsStepperMode(true);
+      setShowAiPanel(false); // Hide hint panel
+    } catch (err) {
+      setAiError(err.message);
+      setShowAiPanel(true);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleCloseStepper = () => {
+    setIsStepperMode(false);
+    setIsPlayingStepper(false);
+    setStepperData([]);
+    if (stepperDecorationsRef.current) stepperDecorationsRef.current.set([]);
+  };
+
+  useEffect(() => {
+    let interval;
+    if (isPlayingStepper && isStepperMode && stepperData.length > 0) {
+      interval = setInterval(() => {
+        setCurrentStep(prev => {
+          if (prev >= stepperData.length - 1) {
+            setIsPlayingStepper(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 1500); // 1.5s per step
+    }
+    return () => clearInterval(interval);
+  }, [isPlayingStepper, isStepperMode, stepperData]);
+
+  useEffect(() => {
+    if (isStepperMode && stepperData.length > 0 && editorRef.current && monacoRef.current) {
+      const step = stepperData[currentStep];
+      if (step && step.line) {
+        stepperDecorationsRef.current.set([{
+          range: new monacoRef.current.Range(step.line, 1, step.line, 1),
+          options: {
+            isWholeLine: true,
+            className: 'current-execution-line'
+          }
+        }]);
+        editorRef.current.revealLineInCenter(step.line);
+      }
+    } else if (!isStepperMode && stepperDecorationsRef.current) {
+      stepperDecorationsRef.current.set([]);
+    }
+  }, [currentStep, isStepperMode, stepperData]);
 
   const handleRunCode = () => {
     setIsLoading(true);
