@@ -1,31 +1,50 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Editor, { useMonaco } from '@monaco-editor/react';
-import { Play, Loader2, Code2, Terminal as TerminalIcon, Settings, ChevronDown, Upload, Square, Sparkles, XCircle, ArrowLeft, RefreshCw, MessageSquare, Eye, StepForward, StepBack, Pause } from 'lucide-react';
-import { defineMonacoTheme } from '../utils/monacoTheme';
-import { setupAutocomplete } from '../utils/autocomplete';
-import { Terminal as XTerminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { io } from 'socket.io-client';
-import '@xterm/xterm/css/xterm.css';
+import React, { useState, useEffect, useRef } from "react";
+import Editor, { useMonaco } from "@monaco-editor/react";
+import {
+  Play,
+  Loader2,
+  Code2,
+  Terminal as TerminalIcon,
+  Settings,
+  ChevronDown,
+  Upload,
+  Square,
+  Sparkles,
+  XCircle,
+  ArrowLeft,
+  RefreshCw,
+  MessageSquare,
+  Eye,
+  StepForward,
+  StepBack,
+  Pause,
+} from "lucide-react";
+import { defineMonacoTheme } from "../utils/monacoTheme";
+import { setupAutocomplete } from "../utils/autocomplete";
+import { Terminal as XTerminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { io } from "socket.io-client";
+import "@xterm/xterm/css/xterm.css";
 
 const DEFAULT_CODE = {
   python: 'print("Hello, CodeMastery from Pyodide!")',
   javascript: 'console.log("Hello, World!");',
   c: '#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}',
-  'c++': '#include <iostream>\n\nusing namespace std;\n\nint main()\n{\n    cout << "Hello world!" << endl;\n    return 0;\n}',
+  "c++":
+    '#include <iostream>\n\nusing namespace std;\n\nint main()\n{\n    cout << "Hello world!" << endl;\n    return 0;\n}',
   java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
 };
 
 export default function Codebox() {
-  const [language, setLanguage] = useState('c++');
-  const [code, setCode] = useState(DEFAULT_CODE['c++']);
+  const [language, setLanguage] = useState("c++");
+  const [code, setCode] = useState(DEFAULT_CODE["c++"]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
-  const [aiHint, setAiHint] = useState('');
+  const [aiHint, setAiHint] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const [aiError, setAiError] = useState('');
+  const [aiError, setAiError] = useState("");
   const [isStepperMode, setIsStepperMode] = useState(false);
   const [stepperData, setStepperData] = useState([]);
   const [currentStep, setCurrentStep] = useState(0);
@@ -39,7 +58,7 @@ export default function Codebox() {
   const terminalRef = useRef(null);
   const xtermRef = useRef(null);
   const socketRef = useRef(null);
-  const currentLineRef = useRef('');
+  const currentLineRef = useRef("");
   const isFinishedRef = useRef(false);
   const stepperDecorationsRef = useRef(null);
 
@@ -50,8 +69,14 @@ export default function Codebox() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       setCode(evt.target.result);
-      const ext = file.name.split('.').pop().toLowerCase();
-      const extMap = { 'py': 'python', 'js': 'javascript', 'c': 'c', 'cpp': 'c++', 'java': 'java' };
+      const ext = file.name.split(".").pop().toLowerCase();
+      const extMap = {
+        py: "python",
+        js: "javascript",
+        c: "c",
+        cpp: "c++",
+        java: "java",
+      };
       if (extMap[ext]) {
         setLanguage(extMap[ext]);
       }
@@ -73,11 +98,15 @@ export default function Codebox() {
   useEffect(() => {
     // Initialize XTerm
     const term = new XTerminal({
-      theme: { background: '#0a0a0a', foreground: '#a3be8c', cursor: '#a3be8c' },
-      fontFamily: 'var(--font-family-code)',
+      theme: {
+        background: "#0a0a0a",
+        foreground: "#a3be8c",
+        cursor: "#a3be8c",
+      },
+      fontFamily: "var(--font-family-code)",
       fontSize: 14,
       cursorBlink: true,
-      disableStdin: true
+      disableStdin: true,
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
@@ -85,32 +114,37 @@ export default function Codebox() {
     fitAddon.fit();
     xtermRef.current = term;
 
-    term.writeln('\x1b[32mWelcome to CodeMastery Interactive Terminal!\x1b[0m');
+    term.writeln("\x1b[32mWelcome to CodeMastery Interactive Terminal!\x1b[0m");
     term.writeln('Select a language and click "Run Code" to start.\r\n');
 
     // Initialize Socket.io
     // If running in Vite dev server (port 5173), connect to localhost:3001
     // Otherwise, connect to the same host (for localtunnel/ngrok)
-    const socketUrl = window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin;
+    const socketUrl =
+      window.location.port === "5173"
+        ? "http://localhost:3001"
+        : window.location.origin;
     const socket = io(socketUrl);
     socketRef.current = socket;
 
-    socket.on('output', (data) => {
+    socket.on("output", (data) => {
       term.write(data);
     });
 
-    socket.on('exit_info', ({ code, codeHex, timeTaken }) => {
+    socket.on("exit_info", ({ code, codeHex, timeTaken }) => {
       if (xtermRef.current) {
         // If the cursor is not at the beginning of the line, add a newline
         if (xtermRef.current.buffer.active.cursorX > 0) {
-          xtermRef.current.writeln('');
+          xtermRef.current.writeln("");
         }
-        xtermRef.current.writeln(`\x1b[33mProcess returned ${code} (0x${codeHex})   execution time : ${timeTaken} s\x1b[0m`);
-        xtermRef.current.writeln('\x1b[33mPress any key to continue.\x1b[0m');
+        xtermRef.current.writeln(
+          `\x1b[33mProcess returned ${code} (0x${codeHex})   execution time : ${timeTaken} s\x1b[0m`,
+        );
+        xtermRef.current.writeln("\x1b[33mPress any key to continue.\x1b[0m");
       }
     });
 
-    socket.on('exit', () => {
+    socket.on("exit", () => {
       setIsLoading(false);
       isFinishedRef.current = true;
     });
@@ -118,23 +152,26 @@ export default function Codebox() {
     // Handle user input in terminal
     term.onData((data) => {
       if (term.options.disableStdin) return;
-      
+
       if (isFinishedRef.current) {
         // "Press any key to continue" behavior
         setShowTerminal(false);
         return;
       }
 
-      if (data === '\r') { // Enter
-        socket.emit('input', currentLineRef.current + '\n');
-        term.write('\r\n');
-        currentLineRef.current = '';
-      } else if (data === '\x7f') { // Backspace
+      if (data === "\r") {
+        // Enter
+        socket.emit("input", currentLineRef.current + "\n");
+        term.write("\r\n");
+        currentLineRef.current = "";
+      } else if (data === "\x7f") {
+        // Backspace
         if (currentLineRef.current.length > 0) {
           currentLineRef.current = currentLineRef.current.slice(0, -1);
-          term.write('\b \b');
+          term.write("\b \b");
         }
-      } else { // Normal character
+      } else {
+        // Normal character
         currentLineRef.current += data;
         term.write(data);
       }
@@ -156,9 +193,13 @@ export default function Codebox() {
   const handleEditorWillMount = (monaco) => {
     defineMonacoTheme(monaco);
     // Only register autocomplete once
-    if (!monaco.languages.getLanguages().some(lang => lang.id === 'cpp_custom_loaded')) {
+    if (
+      !monaco.languages
+        .getLanguages()
+        .some((lang) => lang.id === "cpp_custom_loaded")
+    ) {
       setupAutocomplete(monaco);
-      monaco.languages.register({ id: 'cpp_custom_loaded' });
+      monaco.languages.register({ id: "cpp_custom_loaded" });
     }
   };
 
@@ -173,32 +214,38 @@ export default function Codebox() {
     const newLang = e.target.value;
     setLanguage(newLang);
     setCode(DEFAULT_CODE[newLang]);
-    
+
     // Clear markers on language change
     if (editorRef.current && monacoRef.current) {
-      monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), "python", []);
+      monacoRef.current.editor.setModelMarkers(
+        editorRef.current.getModel(),
+        "python",
+        [],
+      );
       if (errorDecorationsRef.current) errorDecorationsRef.current.set([]);
     }
   };
 
-  
   const handleStartStepper = async () => {
     setIsAiLoading(true);
-    setAiError('');
+    setAiError("");
     setIsStepperMode(false);
-    
+
     try {
-      const apiUrl = window.location.port === '5173' ? 'http://localhost:3001/api/ai-trace' : `${window.location.origin}/api/ai-trace`;
-      
+      const apiUrl =
+        window.location.port === "5173"
+          ? "http://localhost:3001/api/ai-trace"
+          : `${window.location.origin}/api/ai-trace`;
+
       const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, language })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, language }),
       });
-      
+
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to get AI trace');
-      
+      if (!response.ok) throw new Error(data.error || "Failed to get AI trace");
+
       setStepperData(data.trace);
       setCurrentStep(0);
       setIsStepperMode(true);
@@ -222,7 +269,7 @@ export default function Codebox() {
     let interval;
     if (isPlayingStepper && isStepperMode && stepperData.length > 0) {
       interval = setInterval(() => {
-        setCurrentStep(prev => {
+        setCurrentStep((prev) => {
           if (prev >= stepperData.length - 1) {
             setIsPlayingStepper(false);
             return prev;
@@ -235,16 +282,23 @@ export default function Codebox() {
   }, [isPlayingStepper, isStepperMode, stepperData]);
 
   useEffect(() => {
-    if (isStepperMode && stepperData.length > 0 && editorRef.current && monacoRef.current) {
+    if (
+      isStepperMode &&
+      stepperData.length > 0 &&
+      editorRef.current &&
+      monacoRef.current
+    ) {
       const step = stepperData[currentStep];
       if (step && step.line) {
-        stepperDecorationsRef.current.set([{
-          range: new monacoRef.current.Range(step.line, 1, step.line, 1),
-          options: {
-            isWholeLine: true,
-            className: 'current-execution-line'
-          }
-        }]);
+        stepperDecorationsRef.current.set([
+          {
+            range: new monacoRef.current.Range(step.line, 1, step.line, 1),
+            options: {
+              isWholeLine: true,
+              className: "current-execution-line",
+            },
+          },
+        ]);
         editorRef.current.revealLineInCenter(step.line);
       }
     } else if (!isStepperMode && stepperDecorationsRef.current) {
@@ -256,8 +310,8 @@ export default function Codebox() {
     setIsLoading(true);
     setShowTerminal(true);
     isFinishedRef.current = false;
-    currentLineRef.current = '';
-    
+    currentLineRef.current = "";
+
     // Slight delay to allow terminal container to mount/resize before clearing
     setTimeout(() => {
       if (xtermRef.current) {
@@ -265,38 +319,45 @@ export default function Codebox() {
         xtermRef.current.options.disableStdin = false;
       }
     }, 100);
-    
+
     // Clear previous error markers
     if (editorRef.current && monacoRef.current) {
-      monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), "python", []);
+      monacoRef.current.editor.setModelMarkers(
+        editorRef.current.getModel(),
+        "python",
+        [],
+      );
       if (errorDecorationsRef.current) errorDecorationsRef.current.set([]);
     }
 
-    socketRef.current.emit('run_code', { code, language });
+    socketRef.current.emit("run_code", { code, language });
   };
 
-  
   const handleAnalyzeCode = async () => {
     setIsAiLoading(true);
-    setAiError('');
-    setAiHint('');
+    setAiError("");
+    setAiHint("");
     setShowAiPanel(true);
     try {
-      const apiUrl = window.location.port === '5173' ? 'http://localhost:3001/api/ai-hint' : `${window.location.origin}/api/ai-hint`;
-      
+      const apiUrl =
+        window.location.port === "5173"
+          ? "http://localhost:3001/api/ai-hint"
+          : `${window.location.origin}/api/ai-hint`;
+
       const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code,
           language,
-          user_prompt: 'วิเคราะห์โค้ดนี้ให้หน่อยว่ามีบั๊กตรงไหน หรือมีจุดที่ควรปรับปรุงยังไงบ้าง'
-        })
+          user_prompt:
+            "วิเคราะห์โค้ดนี้ให้หน่อยว่ามีบั๊กตรงไหน หรือมีจุดที่ควรปรับปรุงยังไงบ้าง",
+        }),
       });
-      
+
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to get AI hint');
-      
+      if (!response.ok) throw new Error(data.error || "Failed to get AI hint");
+
       setAiHint(data.hint);
     } catch (err) {
       setAiError(err.message);
@@ -307,76 +368,111 @@ export default function Codebox() {
 
   const handleStopCode = () => {
     if (socketRef.current) {
-      socketRef.current.emit('kill');
+      socketRef.current.emit("kill");
     }
   };
 
   const languageLabels = {
-    'python': 'Python',
-    'javascript': 'JavaScript',
-    'c': 'C',
-    'c++': 'C++',
-    'java': 'Java'
+    python: "Python",
+    javascript: "JavaScript",
+    c: "C",
+    "c++": "C++",
+    java: "Java",
   };
 
   return (
-    <div className="container" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)' }}>
+    <div
+      className="container"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "calc(100vh - 100px)",
+      }}
+    >
       {/* Header Section */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: '1.5rem',
-        padding: '1rem 1.5rem',
-        backgroundColor: 'var(--color-bg-surface)',
-        borderRadius: 'var(--border-radius-lg)',
-        border: '1px solid var(--border-color)',
-        boxShadow: 'var(--shadow-md)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ padding: '0.5rem', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 'var(--border-radius-md)', color: 'var(--color-secondary)' }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "1.5rem",
+          padding: "1rem 1.5rem",
+          backgroundColor: "var(--color-bg-surface)",
+          borderRadius: "var(--border-radius-lg)",
+          border: "1px solid var(--border-color)",
+          boxShadow: "var(--shadow-md)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <div
+            style={{
+              padding: "0.5rem",
+              backgroundColor: "rgba(59, 130, 246, 0.1)",
+              borderRadius: "var(--border-radius-md)",
+              color: "var(--color-secondary)",
+            }}
+          >
             <Code2 size={24} />
           </div>
-          <h2 className="text-gradient" style={{ margin: 0, fontSize: '1.5rem' }}>Interactive Terminal</h2>
-        </div>
-        
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <div 
-            ref={dropdownRef}
-            style={{ position: 'relative' }}
+          <h2
+            className="text-gradient"
+            style={{ margin: 0, fontSize: "1.5rem" }}
           >
-            <div 
+            Interactive Terminal
+          </h2>
+        </div>
+
+        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+          <div ref={dropdownRef} style={{ position: "relative" }}>
+            <div
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '0.5rem', 
-                backgroundColor: 'var(--color-bg-base)', 
-                padding: '0.5rem 1rem', 
-                borderRadius: 'var(--border-radius-md)', 
-                border: '1px solid var(--border-color)',
-                cursor: 'pointer',
-                userSelect: 'none'
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                backgroundColor: "var(--color-bg-base)",
+                padding: "0.5rem 1rem",
+                borderRadius: "var(--border-radius-md)",
+                border: "1px solid var(--border-color)",
+                cursor: "pointer",
+                userSelect: "none",
               }}
             >
-              <Settings size={16} style={{ color: 'var(--color-text-muted)' }} />
-              <span style={{ color: 'var(--color-text-main)', fontWeight: '500' }}>{languageLabels[language]}</span>
-              <ChevronDown size={16} style={{ color: 'var(--color-text-muted)', marginLeft: '0.5rem', transition: 'transform 0.2s', transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+              <Settings
+                size={16}
+                style={{ color: "var(--color-text-muted)" }}
+              />
+              <span
+                style={{ color: "var(--color-text-main)", fontWeight: "500" }}
+              >
+                {languageLabels[language]}
+              </span>
+              <ChevronDown
+                size={16}
+                style={{
+                  color: "var(--color-text-muted)",
+                  marginLeft: "0.5rem",
+                  transition: "transform 0.2s",
+                  transform: isDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
+                }}
+              />
             </div>
 
             {isDropdownOpen && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 0.5rem)',
-                left: 0,
-                width: '100%',
-                backgroundColor: 'var(--color-bg-surface)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--border-radius-md)',
-                boxShadow: 'var(--shadow-lg)',
-                zIndex: 10,
-                overflow: 'hidden'
-              }}>
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 0.5rem)",
+                  left: 0,
+                  width: "100%",
+                  backgroundColor: "var(--color-bg-surface)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "var(--border-radius-md)",
+                  boxShadow: "var(--shadow-lg)",
+                  zIndex: 10,
+                  overflow: "hidden",
+                }}
+              >
                 {Object.entries(languageLabels).map(([key, label]) => (
                   <div
                     key={key}
@@ -385,15 +481,28 @@ export default function Codebox() {
                       setIsDropdownOpen(false);
                     }}
                     style={{
-                      padding: '0.75rem 1rem',
-                      cursor: 'pointer',
-                      color: language === key ? 'var(--color-primary)' : 'var(--color-text-main)',
-                      backgroundColor: language === key ? 'rgba(249, 115, 22, 0.1)' : 'transparent',
-                      fontWeight: language === key ? '600' : '400',
-                      transition: 'background-color 0.2s'
+                      padding: "0.75rem 1rem",
+                      cursor: "pointer",
+                      color:
+                        language === key
+                          ? "var(--color-primary)"
+                          : "var(--color-text-main)",
+                      backgroundColor:
+                        language === key
+                          ? "rgba(249, 115, 22, 0.1)"
+                          : "transparent",
+                      fontWeight: language === key ? "600" : "400",
+                      transition: "background-color 0.2s",
                     }}
-                    onMouseEnter={(e) => { if(language !== key) e.currentTarget.style.backgroundColor = 'var(--color-bg-surface-hover)' }}
-                    onMouseLeave={(e) => { if(language !== key) e.currentTarget.style.backgroundColor = 'transparent' }}
+                    onMouseEnter={(e) => {
+                      if (language !== key)
+                        e.currentTarget.style.backgroundColor =
+                          "var(--color-bg-surface-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (language !== key)
+                        e.currentTarget.style.backgroundColor = "transparent";
+                    }}
                   >
                     {label}
                   </div>
@@ -401,94 +510,153 @@ export default function Codebox() {
               </div>
             )}
           </div>
-          
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleFileUpload} 
-              style={{ display: 'none' }} 
+
+          <div
+            style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}
+          >
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              style={{ display: "none" }}
               accept=".py,.js,.c,.cpp,.java,.txt"
             />
-            <button 
-              className="btn btn-secondary" 
-              onClick={() => fileInputRef.current?.click()} 
-              style={{ padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--color-text-main)', transition: 'all 0.2s ease-in-out' }}
+            <button
+              className="btn btn-secondary"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                padding: "0.6rem 1rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                backgroundColor: "transparent",
+                border: "1px solid var(--border-color)",
+                color: "var(--color-text-main)",
+                transition: "all 0.2s ease-in-out",
+              }}
               title="Upload Code File"
             >
-              <Upload size={18} /> <span style={{ fontWeight: '500' }}>Upload</span>
+              <Upload size={18} />{" "}
+              <span style={{ fontWeight: "500" }}>Upload</span>
             </button>
             {isLoading ? (
-              <button 
-                className="btn" 
-                onClick={handleStopCode} 
-                style={{ 
-                  padding: '0.6rem 1.5rem', 
-                  backgroundColor: 'var(--color-error)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 'var(--border-radius-md)',
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.5rem',
-                  cursor: 'pointer'
+              <button
+                className="btn"
+                onClick={handleStopCode}
+                style={{
+                  padding: "0.6rem 1.5rem",
+                  backgroundColor: "var(--color-error)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "var(--border-radius-md)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  cursor: "pointer",
                 }}
               >
                 <Square size={16} fill="currentColor" />
-                <span style={{ fontWeight: '600' }}>Stop</span>
+                <span style={{ fontWeight: "600" }}>Stop</span>
               </button>
             ) : (
-              <button 
-                className="btn btn-primary" 
-                onClick={handleRunCode} 
-                style={{ 
-                  padding: '0.6rem 1.5rem', 
-                  boxShadow: '0 4px 14px 0 rgba(249, 115, 22, 0.39)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.5rem',
-                  transition: 'all 0.2s ease-in-out'
+              <button
+                className="btn btn-primary"
+                onClick={handleRunCode}
+                style={{
+                  padding: "0.6rem 1.5rem",
+                  boxShadow: "0 4px 14px 0 rgba(249, 115, 22, 0.39)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  transition: "all 0.2s ease-in-out",
                 }}
               >
                 <Play size={18} fill="currentColor" />
-                <span style={{ fontWeight: '600' }}>Run Code</span>
+                <span style={{ fontWeight: "600" }}>Run Code</span>
               </button>
             )}
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, overflow: 'hidden' }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "1rem",
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
         {/* Editor Section */}
-        <div style={{ 
-          flex: showTerminal ? 1 : 2, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          borderRadius: 'var(--border-radius-lg)', 
-          overflow: 'hidden',
-          border: '1px solid var(--border-color)',
-          backgroundColor: '#1e1e1e', // Monaco dark background
-          boxShadow: 'var(--shadow-lg)',
-          transition: 'flex 0.3s ease-in-out'
-        }}>
-          <div style={{ 
-            padding: '0.75rem 1rem', 
-            backgroundColor: 'rgba(255,255,255,0.05)', 
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}>
-            <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#ff5f56' }} />
-            <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#ffbd2e' }} />
-            <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#27c93f' }} />
-            <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem', color: '#858585', fontFamily: 'var(--font-family-base)' }}>
-              main.{language === 'python' ? 'py' : language === 'javascript' ? 'js' : language === 'c++' ? 'cpp' : language}
+        <div
+          style={{
+            flex: showTerminal ? 1 : 2,
+            display: "flex",
+            flexDirection: "column",
+            borderRadius: "var(--border-radius-lg)",
+            overflow: "hidden",
+            border: "1px solid var(--border-color)",
+            backgroundColor: "#1e1e1e", // Monaco dark background
+            boxShadow: "var(--shadow-lg)",
+            transition: "flex 0.3s ease-in-out",
+          }}
+        >
+          <div
+            style={{
+              padding: "0.75rem 1rem",
+              backgroundColor: "rgba(255,255,255,0.05)",
+              borderBottom: "1px solid rgba(255,255,255,0.1)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+            }}
+          >
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                backgroundColor: "#ff5f56",
+              }}
+            />
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                backgroundColor: "#ffbd2e",
+              }}
+            />
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                backgroundColor: "#27c93f",
+              }}
+            />
+            <span
+              style={{
+                marginLeft: "0.5rem",
+                fontSize: "0.85rem",
+                color: "#858585",
+                fontFamily: "var(--font-family-base)",
+              }}
+            >
+              main.
+              {language === "python"
+                ? "py"
+                : language === "javascript"
+                  ? "js"
+                  : language === "c++"
+                    ? "cpp"
+                    : language}
             </span>
           </div>
           <Editor
             height="100%"
-            language={language === 'c++' ? 'cpp' : language}
+            language={language === "c++" ? "cpp" : language}
             theme="custom-dark"
             value={code}
             beforeMount={handleEditorWillMount}
@@ -497,70 +665,104 @@ export default function Codebox() {
               setCode(value);
               // Clear markers when user types
               if (editorRef.current && monacoRef.current) {
-                monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), "python", []);
-                if (errorDecorationsRef.current) errorDecorationsRef.current.set([]);
+                monacoRef.current.editor.setModelMarkers(
+                  editorRef.current.getModel(),
+                  "python",
+                  [],
+                );
+                if (errorDecorationsRef.current)
+                  errorDecorationsRef.current.set([]);
               }
             }}
             options={{
               minimap: { enabled: false },
               fontSize: 15,
-              fontFamily: 'var(--font-family-code)',
+              fontFamily: "var(--font-family-code)",
               padding: { top: 16 },
               suggestOnTriggerCharacters: true,
               quickSuggestions: true,
-              snippetSuggestions: 'inline',
+              snippetSuggestions: "inline",
               lineHeight: 24,
-              renderLineHighlight: 'all',
-              cursorBlinking: 'smooth',
+              renderLineHighlight: "all",
+              cursorBlinking: "smooth",
             }}
           />
         </div>
 
         {/* Bottom Panel: Terminal */}
-        <div style={{ 
-          flex: showTerminal ? 1 : 0, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: '1.5rem',
-          height: showTerminal ? 'auto' : '0px',
-          opacity: showTerminal ? 1 : 0,
-          overflow: 'hidden',
-          transition: 'all 0.3s ease-in-out'
-        }}>
-          <div style={{ 
-            flex: 1, 
-            display: 'flex', 
-            flexDirection: 'column', 
-            borderRadius: 'var(--border-radius-lg)', 
-            overflow: 'hidden',
-            border: '1px solid var(--border-color)',
-            backgroundColor: '#0a0a0a',
-            boxShadow: 'var(--shadow-lg)'
-          }}>
-            <div style={{ 
-              padding: '0.75rem 1rem', 
-              backgroundColor: 'rgba(255,255,255,0.05)', 
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div
+          style={{
+            flex: showTerminal ? 1 : 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "1.5rem",
+            height: showTerminal ? "auto" : "0px",
+            opacity: showTerminal ? 1 : 0,
+            overflow: "hidden",
+            transition: "all 0.3s ease-in-out",
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              borderRadius: "var(--border-radius-lg)",
+              overflow: "hidden",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "#0a0a0a",
+              boxShadow: "var(--shadow-lg)",
+            }}
+          >
+            <div
+              style={{
+                padding: "0.75rem 1rem",
+                backgroundColor: "rgba(255,255,255,0.05)",
+                borderBottom: "1px solid rgba(255,255,255,0.1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+              >
                 <TerminalIcon size={16} color="#94a3b8" />
-                <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '500', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                <span
+                  style={{
+                    fontSize: "0.85rem",
+                    color: "#94a3b8",
+                    fontWeight: "500",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                  }}
+                >
                   Terminal
                 </span>
               </div>
-              <button 
+              <button
                 onClick={() => setShowTerminal(false)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', padding: '0.25rem' }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#94a3b8",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0.25rem",
+                }}
               >
                 <Square size={14} />
               </button>
             </div>
-            <div 
-              ref={terminalRef} 
-              style={{ flex: 1, padding: '1rem', width: '100%', height: '100%' }}
+            <div
+              ref={terminalRef}
+              style={{
+                flex: 1,
+                padding: "1rem",
+                width: "100%",
+                height: "100%",
+              }}
             />
           </div>
         </div>

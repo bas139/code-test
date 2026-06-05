@@ -1,21 +1,21 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import Home from './pages/Home';
-import Codebox from './pages/Codebox';
-import Dashboard from './pages/Dashboard';
-import Leaderboard from './pages/Leaderboard';
-import LessonView from './pages/LessonView';
-import Courses from './pages/Courses';
-import VideoCourses from './pages/VideoCourses';
-import CourseView from './pages/CourseView';
-import QuizView from './pages/QuizView';
-import Profile from './pages/Profile';
-import CreateProblem from './pages/CreateProblem';
-import { ThemeProvider } from './contexts/ThemeContext';
-import { AuthProvider } from './contexts/AuthContext';
-import { UserProvider } from './contexts/UserContext';
-import './App.css';
+import React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Navbar from "./components/Navbar";
+import Home from "./pages/Home";
+import Codebox from "./pages/Codebox";
+import Dashboard from "./pages/Dashboard";
+import Leaderboard from "./pages/Leaderboard";
+import LessonView from "./pages/LessonView";
+import Courses from "./pages/Courses";
+import VideoCourses from "./pages/VideoCourses";
+import CourseView from "./pages/CourseView";
+import QuizView from "./pages/QuizView";
+import Profile from "./pages/Profile";
+import CreateProblem from "./pages/CreateProblem";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { AuthProvider } from "./contexts/AuthContext";
+import { UserProvider } from "./contexts/UserContext";
+import "./App.css";
 
 function App() {
   return (
