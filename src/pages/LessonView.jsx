@@ -18,6 +18,10 @@ import {
   MessageSquare,
   PlayCircle,
   SkipForward,
+  Eye,
+  StepForward,
+  StepBack,
+  Pause,
 } from "lucide-react";
 import { defineMonacoTheme } from "../utils/monacoTheme";
 import { problemsData } from "../data/problems";
@@ -90,6 +94,10 @@ export default function LessonView() {
   const [aiHint, setAiHint] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [isStepperMode, setIsStepperMode] = useState(false);
+  const [stepperData, setStepperData] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isPlayingStepper, setIsPlayingStepper] = useState(false);
 
   const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -101,6 +109,7 @@ export default function LessonView() {
   const socketRef = useRef(null);
   const currentLineRef = useRef("");
   const isFinishedRef = useRef(false);
+  const stepperDecorationsRef = useRef(null);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -259,6 +268,7 @@ export default function LessonView() {
     editorRef.current = editor;
     monacoRef.current = monaco;
     errorDecorationsRef.current = editor.createDecorationsCollection([]);
+    stepperDecorationsRef.current = editor.createDecorationsCollection([]);
   };
 
   const parsePythonError = (errorStr) => {
@@ -446,6 +456,86 @@ export default function LessonView() {
       setIsAiLoading(false);
     }
   };
+
+  const handleStartStepper = async () => {
+    setIsAiLoading(true);
+    setAiError("");
+    setIsStepperMode(false);
+
+    try {
+      const apiUrl =
+        window.location.port === "5173"
+          ? "http://localhost:3001/api/ai-trace"
+          : `${window.location.origin}/api/ai-trace`;
+
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, language }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to get AI trace");
+
+      setStepperData(data.trace);
+      setCurrentStep(0);
+      setIsStepperMode(true);
+      setShowHint(false); // Hide hint panel
+    } catch (err) {
+      setAiError(err.message);
+      setShowHint(true);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleCloseStepper = () => {
+    setIsStepperMode(false);
+    setIsPlayingStepper(false);
+    setStepperData([]);
+    if (stepperDecorationsRef.current) stepperDecorationsRef.current.set([]);
+  };
+
+  useEffect(() => {
+    let interval;
+    if (isPlayingStepper && isStepperMode && stepperData.length > 0) {
+      interval = setInterval(() => {
+        setCurrentStep((prev) => {
+          if (prev >= stepperData.length - 1) {
+            setIsPlayingStepper(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 1500); // 1.5s per step
+    }
+    return () => clearInterval(interval);
+  }, [isPlayingStepper, isStepperMode, stepperData]);
+
+  useEffect(() => {
+    if (
+      isStepperMode &&
+      stepperData.length > 0 &&
+      editorRef.current &&
+      monacoRef.current
+    ) {
+      const step = stepperData[currentStep];
+      if (step && step.line) {
+        stepperDecorationsRef.current.set([
+          {
+            range: new monacoRef.current.Range(step.line, 1, step.line, 1),
+            options: {
+              isWholeLine: true,
+              className: "current-execution-line",
+            },
+          },
+        ]);
+        editorRef.current.revealLineInCenter(step.line);
+      }
+    } else if (!isStepperMode && stepperDecorationsRef.current) {
+      stepperDecorationsRef.current.set([]);
+    }
+  }, [currentStep, isStepperMode, stepperData]);
 
   const handleSubmitCode = async () => {
     setIsLoading(true);
@@ -780,22 +870,55 @@ export default function LessonView() {
                 borderRadius: "var(--border-radius-md)",
               }}
             >
-              {!showHint && (
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleGetAiHint}
+              {!showHint && !isStepperMode && (
+                <div
                   style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.75rem",
                     width: "100%",
-                    borderColor: "#8b5cf6",
-                    color: "#8b5cf6",
-                    background: "transparent",
                   }}
                 >
-                  <Sparkles size={18} />{" "}
-                  {langPref === "th"
-                    ? "ให้ AI ช่วยวิเคราะห์โค้ด"
-                    : "Ask AI to Analyze Code"}
-                </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleGetAiHint}
+                    disabled={isAiLoading || !code.trim()}
+                    style={{
+                      width: "100%",
+                      borderColor: "#8b5cf6",
+                      color: "#8b5cf6",
+                      background: "transparent",
+                    }}
+                  >
+                    {isAiLoading ? (
+                      <Loader2 className="spinner" size={18} />
+                    ) : (
+                      <Sparkles size={18} />
+                    )}
+                    {langPref === "th"
+                      ? "ให้ AI ช่วยวิเคราะห์โค้ด"
+                      : "Ask AI to Analyze Code"}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleStartStepper}
+                    disabled={isAiLoading || !code.trim()}
+                    style={{
+                      width: "100%",
+                      backgroundColor: "#8b5cf6",
+                      borderColor: "#8b5cf6",
+                    }}
+                  >
+                    {isAiLoading ? (
+                      <Loader2 className="spinner" size={18} />
+                    ) : (
+                      <Eye size={18} />
+                    )}
+                    {langPref === "th"
+                      ? "มองทะลุโค้ด (Visual Stepper)"
+                      : "Visual Code Stepper"}
+                  </button>
+                </div>
               )}
 
               {showHint && (
@@ -1404,6 +1527,198 @@ export default function LessonView() {
               </div>
             </div>
           </div>
+
+          {/* Stepper Panel */}
+          {isStepperMode && stepperData.length > 0 && (
+            <div
+              style={{
+                flex: 1,
+                padding: "1rem",
+                backgroundColor: "var(--color-bg-base)",
+                border: "1px solid var(--border-color)",
+                borderRadius: "var(--border-radius-lg)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    color: "#8b5cf6",
+                  }}
+                >
+                  <Eye size={20} /> สเต็ปที่ {currentStep + 1} /{" "}
+                  {stepperData.length}
+                </h3>
+                <button
+                  onClick={handleCloseStepper}
+                  className="btn btn-secondary"
+                  style={{ padding: "0.2rem 0.5rem" }}
+                >
+                  <XCircle size={18} /> ปิด
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "1.5rem",
+                  alignItems: "stretch",
+                }}
+              >
+                {/* Left: Explanation and Controls */}
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "1rem",
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: 0,
+                      color: "var(--color-text-main)",
+                      backgroundColor: "var(--color-bg-surface)",
+                      padding: "1rem",
+                      borderRadius: "var(--border-radius-md)",
+                      borderLeft: "4px solid #8b5cf6",
+                      fontSize: "1.05rem",
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {stepperData[currentStep]?.explanation || "กำลังทำงาน..."}
+                  </p>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.5rem",
+                      alignItems: "center",
+                    }}
+                  >
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setCurrentStep((p) => Math.max(0, p - 1))}
+                      disabled={currentStep === 0}
+                    >
+                      <StepBack size={20} />
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => setIsPlayingStepper(!isPlayingStepper)}
+                      style={{
+                        backgroundColor: "#8b5cf6",
+                        borderColor: "#8b5cf6",
+                      }}
+                    >
+                      {isPlayingStepper ? (
+                        <Pause size={20} />
+                      ) : (
+                        <Play size={20} />
+                      )}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() =>
+                        setCurrentStep((p) =>
+                          Math.min(stepperData.length - 1, p + 1),
+                        )
+                      }
+                      disabled={currentStep === stepperData.length - 1}
+                    >
+                      <StepForward size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right: Variables */}
+                <div
+                  style={{
+                    flex: 1,
+                    backgroundColor: "var(--color-bg-surface)",
+                    borderRadius: "var(--border-radius-md)",
+                    padding: "1rem",
+                    border: "1px solid rgba(255,255,255,0.05)",
+                  }}
+                >
+                  <h4
+                    style={{
+                      margin: "0 0 0.8rem 0",
+                      color: "var(--color-text-muted)",
+                      fontSize: "0.95rem",
+                    }}
+                  >
+                    ตัวแปร (Variables)
+                  </h4>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    {stepperData[currentStep]?.vars &&
+                    Object.keys(stepperData[currentStep].vars).length > 0 ? (
+                      Object.entries(stepperData[currentStep].vars).map(
+                        ([k, v]) => (
+                          <div
+                            key={k}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              backgroundColor: "var(--color-bg-base)",
+                              padding: "0.5rem 1rem",
+                              borderRadius: "4px",
+                              border: "1px solid var(--border-color)",
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: "#9cdcfe",
+                                fontFamily: "var(--font-family-code)",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              {k}
+                            </span>
+                            <span
+                              style={{
+                                color: "#ce9178",
+                                fontFamily: "var(--font-family-code)",
+                              }}
+                            >
+                              {v}
+                            </span>
+                          </div>
+                        ),
+                      )
+                    ) : (
+                      <span
+                        style={{
+                          color: "var(--color-text-muted)",
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        ไม่มีตัวแปรที่ใช้งาน
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Bottom Panel: Terminal */}
           <div
