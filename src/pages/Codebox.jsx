@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Editor, { useMonaco } from '@monaco-editor/react';
-import { Play, Loader2, Code2, Terminal as TerminalIcon, Settings, ChevronDown, Upload, Square } from 'lucide-react';
+import { Play, Loader2, Code2, Terminal as TerminalIcon, Settings, ChevronDown, Upload, Square, Sparkles } from 'lucide-react';
 import { setupAutocomplete } from '../utils/autocomplete';
 import { Terminal as XTerminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -21,6 +21,10 @@ export default function Codebox() {
   const [isLoading, setIsLoading] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [aiHint, setAiHint] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -87,6 +91,17 @@ export default function Codebox() {
 
     socket.on('output', (data) => {
       term.write(data);
+    });
+
+    socket.on('exit_info', ({ code, codeHex, timeTaken }) => {
+      if (xtermRef.current) {
+        // If the cursor is not at the beginning of the line, add a newline
+        if (xtermRef.current.buffer.active.cursorX > 0) {
+          xtermRef.current.writeln('');
+        }
+        xtermRef.current.writeln(`\x1b[33mProcess returned ${code} (0x${codeHex})   execution time : ${timeTaken} s\x1b[0m`);
+        xtermRef.current.writeln('\x1b[33mPress any key to continue.\x1b[0m');
+      }
     });
 
     socket.on('exit', () => {
@@ -179,6 +194,36 @@ export default function Codebox() {
     }
 
     socketRef.current.emit('run_code', { code, language });
+  };
+
+  
+  const handleAnalyzeCode = async () => {
+    setIsAiLoading(true);
+    setAiError('');
+    setAiHint('');
+    setShowAiPanel(true);
+    try {
+      const apiUrl = window.location.port === '5173' ? 'http://localhost:3001/api/ai-hint' : `${window.location.origin}/api/ai-hint`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          language,
+          user_prompt: 'วิเคราะห์โค้ดนี้ให้หน่อยว่ามีบั๊กตรงไหน หรือมีจุดที่ควรปรับปรุงยังไงบ้าง'
+        })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to get AI hint');
+      
+      setAiHint(data.hint);
+    } catch (err) {
+      setAiError(err.message);
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
   const handleStopCode = () => {

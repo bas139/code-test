@@ -1,3 +1,5 @@
+require('dotenv').config();
+const { GoogleGenAI } = require('@google/genai');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -316,6 +318,42 @@ app.post('/api/execute', async (req, res) => {
     });
   } else {
     runCode();
+  }
+});
+
+
+// AI Hint Endpoint
+app.post('/api/ai-hint', async (req, res) => {
+  const { code, language, problem_description, error_message, user_prompt, mode } = req.body;
+  
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY is not configured in backend/.env' });
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    let systemInstruction = "คุณเป็นครูสอนโปรแกรมมิ่งใจดี ห้ามเฉลยโค้ดที่ถูกต้องตรงๆ เด็ดขาด! ให้ช่วยวิเคราะห์โค้ดของนักเรียน ชี้ให้เห็นว่าบรรทัดไหนหรือแนวคิดใดที่ผิดพลาด และตั้งคำถามกระตุกต่อมคิดเพื่อให้นักเรียนหาคำตอบได้ด้วยตัวเองเสมอ ใช้ภาษาไทยที่เป็นกันเองและให้กำลังใจ";
+    
+    let prompt = `ภาษาที่ใช้: ${language}\n`;
+    if (problem_description) prompt += `โจทย์: ${problem_description}\n`;
+    if (code) prompt += `โค้ดของนักเรียน:\n${code}\n`;
+    if (error_message) prompt += `ข้อผิดพลาดที่เกิดขึ้น:\n${error_message}\n`;
+    if (user_prompt) prompt += `\nคำถามจากนักเรียน: ${user_prompt}`;
+    else prompt += `\nช่วยไกด์หน่อยว่าทำไมโค้ดนี้ถึงไม่ผ่าน หรือมีจุดไหนต้องแก้?`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            systemInstruction,
+            temperature: 0.7,
+        }
+    });
+
+    res.json({ hint: response.text });
+  } catch (error) {
+    console.error('AI Error:', error);
+    res.status(500).json({ error: 'Failed to generate AI hint', details: error.message });
   }
 });
 

@@ -58,6 +58,9 @@ export default function LessonView() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [testResults, setTestResults] = useState(null);
   const [showTestResults, setShowTestResults] = useState(false);
+  const [aiHint, setAiHint] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
   
   const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -324,6 +327,48 @@ export default function LessonView() {
     }
   };
 
+  
+  const handleGetAiHint = async () => {
+    setIsAiLoading(true);
+    setAiError('');
+    setAiHint('');
+    setShowHint(true);
+    try {
+      const apiUrl = window.location.port === '5173' ? 'http://localhost:3001/api/ai-hint' : `${window.location.origin}/api/ai-hint`;
+      
+      let errorContext = '';
+      if (testResults && testResults.status !== 'accepted' && testResults.details) {
+         const failed = testResults.details.find(d => !d.passed);
+         if (failed) {
+            errorContext = `Failed Testcase ${failed.index}:\nInput: ${failed.input}\nExpected: ${failed.expected}\nActual: ${failed.actual}`;
+         }
+      }
+      if (testResults && testResults.error) {
+         errorContext = testResults.error;
+      }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          language,
+          problem_description: problem.description_th || problem.description_en,
+          error_message: errorContext
+        })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to get AI hint');
+      
+      setAiHint(data.hint);
+    } catch (err) {
+      setAiError(err.message);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const handleSubmitCode = async () => {
     setIsLoading(true);
     setShowTestResults(true);
@@ -495,20 +540,40 @@ export default function LessonView() {
           </div>
           
           <div style={{ marginTop: '2rem' }}>
-            {!showHint ? (
-              <button className="btn btn-secondary" onClick={() => setShowHint(true)} style={{ width: '100%', borderColor: '#8b5cf6', color: '#8b5cf6' }}>
-                <Sparkles size={18} /> {langPref === 'th' ? 'ขอคำใบ้' : 'Get AI Hint'}
-              </button>
-            ) : (
-              <div style={{ padding: '1rem', backgroundColor: 'rgba(139, 92, 246, 0.1)', border: '1px solid #8b5cf6', borderRadius: 'var(--border-radius-md)' }}>
-                <h4 style={{ color: '#8b5cf6', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Sparkles size={16} /> {langPref === 'th' ? 'คำใบ้จากระบบ' : 'System Hint'}
-                </h4>
-                <p style={{ fontFamily: 'var(--font-family-code)', fontSize: '0.9rem', color: 'var(--color-text-main)' }}>
-                  {langPref === 'th' ? problem.hint_th : problem.hint_en}
-                </p>
-              </div>
-            )}
+            <div style={{ padding: '1rem', backgroundColor: 'var(--color-bg-surface)', border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius-md)' }}>
+              {!showHint && (
+                 <button className="btn btn-secondary" onClick={handleGetAiHint} style={{ width: '100%', borderColor: '#8b5cf6', color: '#8b5cf6', background: 'transparent' }}>
+                   <Sparkles size={18} /> {langPref === 'th' ? 'ให้ AI ช่วยวิเคราะห์โค้ด' : 'Ask AI to Analyze Code'}
+                 </button>
+              )}
+              
+              {showHint && (
+                 <div>
+                    <h4 style={{ color: '#8b5cf6', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Sparkles size={16} /> AI Tutor</span>
+                       <button onClick={() => setShowHint(false)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}>ปิด</button>
+                    </h4>
+                    
+                    {isAiLoading ? (
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text-muted)' }}>
+                         <Loader2 size={16} className="spin" /> กำลังวิเคราะห์โค้ด...
+                       </div>
+                    ) : aiError ? (
+                       <div style={{ color: 'var(--color-error)' }}>
+                          <p>เกิดข้อผิดพลาด: {aiError}</p>
+                          <p style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>* หากยังไม่มี GEMINI_API_KEY ให้ใส่ในไฟล์ backend/.env ก่อนนะครับ</p>
+                          <button onClick={handleGetAiHint} style={{ marginTop: '0.5rem', padding: '0.2rem 0.5rem', background: 'transparent', border: '1px solid var(--color-error)', color: 'var(--color-error)', borderRadius: '4px', cursor: 'pointer' }}>ลองใหม่</button>
+                       </div>
+                    ) : (
+                       <div style={{ fontSize: '0.9rem', color: 'var(--color-text-main)', lineHeight: '1.5' }}>
+                          {aiHint.split('\n').map((line, i) => (
+                             <p key={i} style={{ marginBottom: '0.5rem' }}>{line}</p>
+                          ))}
+                       </div>
+                    )}
+                 </div>
+              )}
+            </div>
           </div>
         </div>
 
