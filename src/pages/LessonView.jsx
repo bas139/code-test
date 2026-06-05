@@ -53,14 +53,12 @@ export default function LessonView() {
   const [customInput, setCustomInput] = useState(problem?.testcases?.[0]?.input || '');
   const [output, setOutput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isPyodideLoading, setIsPyodideLoading] = useState(true);
   const [showHint, setShowHint] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [testResults, setTestResults] = useState(null);
   const [showTestResults, setShowTestResults] = useState(false);
   
-  const pyodideRef = useRef(null);
   const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
   const editorRef = useRef(null);
@@ -115,32 +113,7 @@ export default function LessonView() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Load Pyodide on mount
-  useEffect(() => {
-    const loadPyodideAsync = async () => {
-      try {
-        if (!window.loadPyodide) {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js';
-          script.async = true;
-          document.body.appendChild(script);
-          
-          await new Promise((resolve) => {
-            script.onload = resolve;
-          });
-        }
-        
-        pyodideRef.current = await window.loadPyodide({
-          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/',
-        });
-        setIsPyodideLoading(false);
-      } catch (err) {
-        console.error("Failed to load Pyodide", err);
-      }
-    };
-    
-    loadPyodideAsync();
-  }, []);
+ 
 
   // Xterm Initialization
   useEffect(() => {
@@ -654,17 +627,13 @@ export default function LessonView() {
                   <button 
                     className="btn btn-secondary" 
                     onClick={handleRunCode} 
-                    disabled={language === 'python' && isPyodideLoading} 
+                     
                     style={{ padding: '0.4rem 1rem', fontSize: '0.9rem', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--color-text-main)', transition: 'all 0.2s ease-in-out', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
                   >
-                    {(language === 'python' && isPyodideLoading) ? (
-                      <><Loader2 className="spinner" size={14} /> Loading...</>
-                    ) : (
-                      <><Terminal size={14} fill="currentColor" /> Run</>
-                    )}
+                    <><Terminal size={14} fill="currentColor" /> Run</>
                   </button>
                 )}
-                <button className="btn btn-primary" onClick={handleSubmitCode} disabled={isLoading || (language === 'python' && isPyodideLoading)} style={{ padding: '0.4rem 1.2rem', fontSize: '0.9rem', boxShadow: '0 4px 14px 0 rgba(249, 115, 22, 0.39)', transition: 'all 0.2s ease-in-out' }}>
+                <button className="btn btn-primary" onClick={handleSubmitCode} disabled={isLoading} style={{ padding: '0.4rem 1.2rem', fontSize: '0.9rem', boxShadow: '0 4px 14px 0 rgba(249, 115, 22, 0.39)', transition: 'all 0.2s ease-in-out' }}>
                   {isLoading ? (
                     <><Loader2 className="spinner" size={16} /> Testing...</>
                   ) : (
