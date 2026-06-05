@@ -14,6 +14,22 @@ export const calculateXP = (solvedProblemIds) => {
   return xp;
 };
 
+export const checkBadges = (userData) => {
+  const badges = [];
+  const solvedCount = userData.solvedProblems.length;
+
+  if (solvedCount >= 1) badges.push({ id: 'first_blood', name: 'First Blood', icon: '🩸', desc: 'Solve your first problem' });
+  if (solvedCount >= 5) badges.push({ id: 'problem_solver', name: 'Problem Solver', icon: '🧠', desc: 'Solve 5 problems' });
+  if (solvedCount >= 10) badges.push({ id: 'dedication', name: 'Dedication', icon: '🔥', desc: 'Solve 10 problems' });
+  
+  if (userData.xp >= 1000) badges.push({ id: 'grinder', name: 'Grinder', icon: '⚔️', desc: 'Reach 1,000 XP' });
+  if (userData.xp >= 5000) badges.push({ id: 'master', name: 'Master', icon: '👑', desc: 'Reach 5,000 XP' });
+
+  // Add specific language badges if we wanted to parse course problems, but keep it simple for now.
+
+  return badges;
+};
+
 export const getLevelInfo = (xp) => {
   // Simple progressive level formula
   // Level 1: 0-99

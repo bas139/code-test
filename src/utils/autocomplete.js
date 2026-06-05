@@ -1,3 +1,5 @@
+import { cppReferenceSuggestions } from './cppreference';
+
 export const setupAutocomplete = (monaco) => {
   const rules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
 
@@ -73,7 +75,16 @@ export const setupAutocomplete = (monaco) => {
         { label: '#include <map>', kind: 15, insertText: '#include <map>\\n', insertTextRules: rules, range },
         { label: '#include <set>', kind: 15, insertText: '#include <set>\\n', insertTextRules: rules, range },
       ];
-      return { suggestions };
+
+      // Add cppreference suggestions
+      const cppRefMapped = cppReferenceSuggestions.map(item => ({
+        ...item,
+        kind: item.kind === 'Class' ? 7 : (item.kind === 'Function' ? 3 : 15),
+        insertTextRules: rules,
+        range
+      }));
+
+      return { suggestions: [...suggestions, ...cppRefMapped] };
     }
   });
 

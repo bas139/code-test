@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
-import { Play, Loader2, Sparkles, ArrowLeft, Globe, Settings, ChevronDown, Terminal } from 'lucide-react';
+import { Play, Loader2, Sparkles, ArrowLeft, Globe, Settings, ChevronDown, Terminal, Upload, Square } from 'lucide-react';
 import { problemsData } from '../data/problems';
 import { setupAutocomplete } from '../utils/autocomplete';
 import confetti from 'canvas-confetti';
+import { useUser } from '../contexts/UserContext';
+import { Terminal as XTerminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { io } from 'socket.io-client';
+import '@xterm/xterm/css/xterm.css';
 
 const BOILERPLATE_CODE = {
   python: '# Write your Python code here\n',
@@ -15,11 +20,11 @@ const BOILERPLATE_CODE = {
 };
 
 const languageLabels = {
-  'python': 'Python (Browser)',
-  'javascript': 'JavaScript (Browser)',
-  'c': 'C (Wandbox API)',
-  'c++': 'C++ (Wandbox API)',
-  'java': 'Java (Wandbox API)'
+  'python': 'Python',
+  'javascript': 'JavaScript',
+  'c': 'C',
+  'c++': 'C++',
+  'java': 'Java'
 };
 
 export default function LessonView() {
@@ -27,8 +32,17 @@ export default function LessonView() {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const defaultLang = queryParams.get('lang') || 'python';
+  const { userData, addXP, markProblemSolved } = useUser();
 
-  const problem = problemsData.find(p => p.id === id) || problemsData[0];
+  const [customProblems, setCustomProblems] = useState([]);
+  
+  useEffect(() => {
+    const loaded = JSON.parse(localStorage.getItem('customProblems') || '[]');
+    setCustomProblems(loaded);
+  }, []);
+
+  const allProblems = [...customProblems, ...problemsData];
+  const problem = allProblems.find(p => p.id === id) || allProblems[0] || problemsData[0];
   
   const [langPref, setLangPref] = useState('th'); // 'th' or 'en'
   const [language, setLanguage] = useState(() => localStorage.getItem(`langPref-${problem.id}`) || defaultLang);
@@ -36,18 +50,46 @@ export default function LessonView() {
     const savedLang = localStorage.getItem(`langPref-${problem.id}`) || defaultLang;
     return localStorage.getItem(`code-${problem.id}-${savedLang}`) || BOILERPLATE_CODE[savedLang] || BOILERPLATE_CODE['python'];
   });
-  const [customInput, setCustomInput] = useState(problem.testcases[0]?.input || '');
+  const [customInput, setCustomInput] = useState(problem?.testcases?.[0]?.input || '');
   const [output, setOutput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isPyodideLoading, setIsPyodideLoading] = useState(true);
   const [showHint, setShowHint] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
   
   const pyodideRef = useRef(null);
   const dropdownRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+  const errorDecorationsRef = useRef(null);
+  const terminalRef = useRef(null);
+  const xtermRef = useRef(null);
+  const socketRef = useRef(null);
+  const currentLineRef = useRef('');
+  const isFinishedRef = useRef(false);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      setCode(evt.target.result);
+      // Auto-switch language based on extension if recognized
+      const ext = file.name.split('.').pop().toLowerCase();
+      const extMap = { 'py': 'python', 'js': 'javascript', 'c': 'c', 'cpp': 'c++', 'java': 'java' };
+      if (extMap[ext]) {
+        setLanguage(extMap[ext]);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = null; // reset
+  };
 
   useEffect(() => {
-    setCustomInput(problem.testcases[0]?.input || '');
+    setCustomInput(problem?.testcases?.[0]?.input || '');
     setOutput('');
     setShowHint(false);
     
@@ -98,6 +140,69 @@ export default function LessonView() {
     loadPyodideAsync();
   }, []);
 
+  // Xterm Initialization
+  useEffect(() => {
+    const term = new XTerminal({
+      theme: { background: '#0a0a0a', foreground: '#a3be8c', cursor: '#a3be8c' },
+      fontFamily: 'var(--font-family-code)',
+      fontSize: 14,
+      cursorBlink: true,
+      disableStdin: true
+    });
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    xtermRef.current = term;
+
+    const socketUrl = window.location.port === '5173' ? 'http://localhost:3001' : window.location.origin;
+    const socket = io(socketUrl);
+    socketRef.current = socket;
+
+    socket.on('output', (data) => {
+      term.write(data);
+    });
+
+    socket.on('exit', () => {
+      setIsLoading(false);
+      isFinishedRef.current = true;
+    });
+
+    term.onData((data) => {
+      if (term.options.disableStdin) return;
+      
+      if (isFinishedRef.current) {
+        setShowTerminal(false);
+        return;
+      }
+
+      if (data === '\r') { // Enter
+        socket.emit('input', currentLineRef.current + '\n');
+        term.write('\r\n');
+        currentLineRef.current = '';
+      } else if (data === '\x7f') { // Backspace
+        if (currentLineRef.current.length > 0) {
+          currentLineRef.current = currentLineRef.current.slice(0, -1);
+          term.write('\b \b');
+        }
+      } else { // Normal character
+        currentLineRef.current += data;
+        term.write(data);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      term.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (showTerminal && terminalRef.current && xtermRef.current) {
+      if (!terminalRef.current.hasChildNodes()) {
+        xtermRef.current.open(terminalRef.current);
+      }
+    }
+  }, [showTerminal]);
+
   const handleEditorWillMount = (monaco) => {
     // Only register autocomplete once
     if (!monaco.languages.getLanguages().some(lang => lang.id === 'cpp_custom_loaded')) {
@@ -106,10 +211,38 @@ export default function LessonView() {
     }
   };
 
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+    errorDecorationsRef.current = editor.createDecorationsCollection([]);
+  };
+
+  const parsePythonError = (errorStr) => {
+    if (!errorStr.includes('PythonError:')) return null;
+    
+    // Look for: File "<exec>", line X
+    const execLineMatch = errorStr.match(/File "<exec>", line (\d+)/);
+    if (!execLineMatch) return null;
+    
+    const lineNumber = parseInt(execLineMatch[1], 10);
+    
+    // The last line usually contains the actual error type and message
+    const lines = errorStr.trim().split('\n');
+    const errorMessage = lines[lines.length - 1];
+    
+    return { lineNumber, errorMessage };
+  };
+
   const handleLanguageChange = (e) => {
     const newLang = e.target.value;
     setLanguage(newLang);
     setCode(localStorage.getItem(`code-${problem.id}-${newLang}`) || BOILERPLATE_CODE[newLang]);
+    
+    // Clear markers on language change
+    if (editorRef.current && monacoRef.current) {
+      monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), "python", []);
+      if (errorDecorationsRef.current) errorDecorationsRef.current.set([]);
+    }
   };
 
   const executeCode = async (inputStr) => {
@@ -132,11 +265,27 @@ export default function LessonView() {
       return stdout.join('\n').trim();
     } else if (language === 'javascript') {
       let logOutput = [];
+      let inputLines = inputStr.split('\n');
+      let inputPointer = 0;
+
       const originalConsoleLog = console.log;
+      const originalPrompt = window.prompt;
+      
       console.log = (...args) => logOutput.push(args.join(' '));
-      // eslint-disable-next-line no-new-func
-      new Function(code)();
-      console.log = originalConsoleLog;
+      window.prompt = () => {
+        if (inputPointer < inputLines.length) {
+          return inputLines[inputPointer++];
+        }
+        return null;
+      };
+
+      try {
+        // eslint-disable-next-line no-new-func
+        new Function(code)();
+      } finally {
+        console.log = originalConsoleLog;
+        window.prompt = originalPrompt;
+      }
       return logOutput.join('\n').trim();
     } else if (['c', 'c++', 'java'].includes(language)) {
       const wandboxCompilers = { 'c': 'gcc-head-c', 'c++': 'gcc-head', 'java': 'openjdk-jdk-22+36' };
@@ -161,52 +310,95 @@ export default function LessonView() {
     }
   };
 
-  const handleRunCode = async () => {
+  const handleRunCode = () => {
     setIsLoading(true);
-    setOutput('');
-    try {
-      const res = await executeCode(customInput);
-      setOutput(res || 'Executed successfully with no output.');
-    } catch (error) {
-      setOutput(error.toString());
-    } finally {
-      setIsLoading(false);
+    setShowTerminal(true);
+    isFinishedRef.current = false;
+    currentLineRef.current = '';
+    
+    setTimeout(() => {
+      if (xtermRef.current) {
+        xtermRef.current.reset();
+        xtermRef.current.options.disableStdin = false;
+      }
+    }, 100);
+    
+    if (editorRef.current && monacoRef.current) {
+      monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), "python", []);
+      if (errorDecorationsRef.current) errorDecorationsRef.current.set([]);
+    }
+
+    socketRef.current.emit('run_code', { code, language });
+  };
+
+  const handleStopCode = () => {
+    if (socketRef.current) {
+      socketRef.current.emit('kill');
     }
   };
 
   const handleSubmitCode = async () => {
     setIsLoading(true);
-    let outText = 'Running testcases...\n\n';
-    setOutput(outText);
+    setShowTerminal(true);
+    isFinishedRef.current = true;
+    
+    setTimeout(() => {
+      if (xtermRef.current) {
+        xtermRef.current.reset();
+        xtermRef.current.options.disableStdin = true;
+        xtermRef.current.writeln('Running testcases...\r\n');
+      }
+    }, 100);
+
+    await new Promise(r => setTimeout(r, 150));
     let allPassed = true;
 
-    try {
-      for (let i = 0; i < problem.testcases.length; i++) {
-        const tc = problem.testcases[i];
-        outText += `Testcase ${i + 1}... `;
-        setOutput(outText); // Live update
+    if (editorRef.current && monacoRef.current) {
+      monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), "python", []);
+      if (errorDecorationsRef.current) errorDecorationsRef.current.set([]);
+    }
 
-        const result = await executeCode(tc.input);
+    try {
+      if (!problem?.testcases?.length) {
+        xtermRef.current.writeln('\x1b[31m❌ Error: No testcases found for this problem.\x1b[0m');
+        xtermRef.current.writeln('\r\n\x1b[33mPress any key to continue.\x1b[0m');
+        setIsLoading(false);
+        return;
+      }
+
+      let passedCount = 0;
+      const totalCases = problem.testcases.length;
+
+      for (let i = 0; i < totalCases; i++) {
+        const tc = problem.testcases[i];
+        xtermRef.current.write(`Testcase ${i + 1}/${totalCases}... `);
+
+        const result = await executeCode(tc.input || '');
         
-        if (result === tc.expected.trim()) {
-          outText += '✅ Passed\n';
+        const normalize = (str) => String(str).split('\n').map(l => l.trimEnd()).join('\n').trimEnd();
+
+        if (normalize(result) === normalize(tc.expected)) {
+          xtermRef.current.writeln('\x1b[32m✅ Passed\x1b[0m');
+          passedCount++;
         } else {
-          outText += '❌ Failed\n';
-          outText += `\nInput:\n${tc.input}\n\nExpected:\n${tc.expected}\n\nActual:\n${result}\n`;
+          xtermRef.current.writeln('\x1b[31m❌ Failed\x1b[0m');
+          xtermRef.current.writeln(`\r\nInput:\r\n${(tc.input || '(None)').replace(/\n/g, '\r\n')}\r\n`);
+          xtermRef.current.writeln(`Expected:\r\n${tc.expected.replace(/\n/g, '\r\n')}\r\n`);
+          xtermRef.current.writeln(`Actual:\r\n${result.replace(/\n/g, '\r\n')}\r\n`);
           allPassed = false;
-          break;
         }
       }
 
+      const score = Math.round((passedCount / totalCases) * 100);
+      xtermRef.current.writeln(`\r\n=== Final Score: ${score}/100 ===`);
+
       if (allPassed) {
-        outText += '\n🎉 ACCEPTED! All testcases passed.';
-        const solved = JSON.parse(localStorage.getItem('solvedProblems') || '[]');
-        if (!solved.includes(problem.id)) {
-          solved.push(problem.id);
-          localStorage.setItem('solvedProblems', JSON.stringify(solved));
+        xtermRef.current.writeln('\x1b[32m🎉 ACCEPTED! All testcases passed.\x1b[0m');
+        if (!userData.solvedProblems.includes(problem.id)) {
+          markProblemSolved(problem.id);
+          addXP(25);
         }
         
-        // Trigger confetti celebration!
         confetti({
           particleCount: 150,
           spread: 70,
@@ -214,9 +406,42 @@ export default function LessonView() {
           colors: ['#f97316', '#8b5cf6', '#3b82f6', '#22c55e']
         });
       }
-      setOutput(outText);
+      xtermRef.current.writeln('\r\n\x1b[33mPress any key to continue.\x1b[0m');
     } catch (error) {
-      setOutput(outText + '\nError: ' + error.toString());
+      const errorStr = error.toString();
+      const parsedError = parsePythonError(errorStr);
+      
+      if (parsedError && editorRef.current && monacoRef.current) {
+        const { lineNumber, errorMessage } = parsedError;
+        xtermRef.current.writeln(`\r\n\x1b[31m❌ Error on line ${lineNumber}:\r\n${errorMessage}\x1b[0m`);
+        
+        const model = editorRef.current.getModel();
+        monacoRef.current.editor.setModelMarkers(model, "python", [{
+          startLineNumber: lineNumber,
+          startColumn: 1,
+          endLineNumber: lineNumber,
+          endColumn: 1000,
+          message: errorMessage,
+          severity: monacoRef.current.MarkerSeverity.Error
+        }]);
+        
+        if (errorDecorationsRef.current) {
+          errorDecorationsRef.current.set([{
+            range: new monacoRef.current.Range(lineNumber, 1, lineNumber, 1),
+            options: {
+              isWholeLine: true,
+              className: 'error-lens-line',
+              after: {
+                content: `    ${errorMessage}`,
+                inlineClassName: 'error-lens-text'
+              }
+            }
+          }]);
+        }
+      } else {
+        xtermRef.current.writeln('\r\n\x1b[31mError: ' + errorStr.replace(/\n/g, '\r\n') + '\x1b[0m');
+      }
+      xtermRef.current.writeln('\r\n\x1b[33mPress any key to continue.\x1b[0m');
     } finally {
       setIsLoading(false);
     }
@@ -298,16 +523,17 @@ export default function LessonView() {
         </div>
 
         {/* Right Panel: Editor and Output */}
-        <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ 
-            flex: 2, 
+            flex: showTerminal ? 1 : 2, 
             display: 'flex', 
             flexDirection: 'column', 
             borderRadius: 'var(--border-radius-lg)', 
             overflow: 'hidden',
             border: '1px solid var(--border-color)',
             backgroundColor: '#1e1e1e', // Monaco dark background
-            boxShadow: 'var(--shadow-lg)'
+            boxShadow: 'var(--shadow-lg)',
+            transition: 'flex 0.3s ease-in-out'
           }}>
             <div style={{ 
               padding: '0.75rem 1rem', 
@@ -382,16 +608,45 @@ export default function LessonView() {
                 
               </div>
               
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button className="btn btn-secondary" onClick={handleRunCode} disabled={isLoading || (language === 'python' && isPyodideLoading)} style={{ padding: '0.4rem 1rem', fontSize: '0.9rem', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--color-text-main)', transition: 'all 0.2s ease-in-out' }}>
-                  {(language === 'python' && isPyodideLoading) ? (
-                    <><Loader2 className="spinner" size={16} /> Loading...</>
-                  ) : isLoading ? (
-                    <><Loader2 className="spinner" size={16} /> Running...</>
-                  ) : (
-                    <><Terminal size={16} fill="currentColor" /> Run</>
-                  )}
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileUpload} 
+                  style={{ display: 'none' }} 
+                  accept=".py,.js,.c,.cpp,.java,.txt"
+                />
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => fileInputRef.current?.click()} 
+                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.9rem', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--color-text-main)', transition: 'all 0.2s ease-in-out', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  title="Upload Code File"
+                >
+                  <Upload size={16} /> Upload
                 </button>
+
+                {isLoading ? (
+                  <button 
+                    className="btn" 
+                    onClick={handleStopCode} 
+                    style={{ padding: '0.4rem 1rem', fontSize: '0.9rem', backgroundColor: 'var(--color-error)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <Square size={14} fill="currentColor" /> Stop
+                  </button>
+                ) : (
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={handleRunCode} 
+                    disabled={language === 'python' && isPyodideLoading} 
+                    style={{ padding: '0.4rem 1rem', fontSize: '0.9rem', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--color-text-main)', transition: 'all 0.2s ease-in-out', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    {(language === 'python' && isPyodideLoading) ? (
+                      <><Loader2 className="spinner" size={14} /> Loading...</>
+                    ) : (
+                      <><Terminal size={14} fill="currentColor" /> Run</>
+                    )}
+                  </button>
+                )}
                 <button className="btn btn-primary" onClick={handleSubmitCode} disabled={isLoading || (language === 'python' && isPyodideLoading)} style={{ padding: '0.4rem 1.2rem', fontSize: '0.9rem', boxShadow: '0 4px 14px 0 rgba(249, 115, 22, 0.39)', transition: 'all 0.2s ease-in-out' }}>
                   {isLoading ? (
                     <><Loader2 className="spinner" size={16} /> Testing...</>
@@ -408,7 +663,15 @@ export default function LessonView() {
               theme="vs-dark"
               value={code}
               beforeMount={handleEditorWillMount}
-              onChange={(value) => setCode(value)}
+              onMount={handleEditorDidMount}
+              onChange={(value) => {
+                setCode(value);
+                // Clear markers when user types
+                if (editorRef.current && monacoRef.current) {
+                  monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), "python", []);
+                  if (errorDecorationsRef.current) errorDecorationsRef.current.set([]);
+                }
+              }}
               options={{ 
                 minimap: { enabled: false }, 
                 fontSize: 15, 
@@ -424,7 +687,17 @@ export default function LessonView() {
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', flex: 1 }}>
+          {/* Bottom Panel: Terminal */}
+          <div style={{ 
+            flex: showTerminal ? 1 : 0, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '1.5rem',
+            height: showTerminal ? 'auto' : '0px',
+            opacity: showTerminal ? 1 : 0,
+            overflow: 'hidden',
+            transition: 'all 0.3s ease-in-out'
+          }}>
             <div style={{ 
               flex: 1, 
               display: 'flex', 
@@ -435,37 +708,31 @@ export default function LessonView() {
               backgroundColor: '#0a0a0a',
               boxShadow: 'var(--shadow-lg)'
             }}>
-              <div style={{ padding: '0.75rem 1rem', backgroundColor: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Standard Input (stdin)
+              <div style={{ 
+                padding: '0.75rem 1rem', 
+                backgroundColor: 'rgba(255,255,255,0.05)', 
+                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Terminal size={16} color="#94a3b8" />
+                  <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '500', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                    Interactive Terminal
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setShowTerminal(false)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', alignItems: 'center', padding: '0.25rem' }}
+                >
+                  <Square size={14} />
+                </button>
               </div>
-              <textarea
-                value={customInput}
-                onChange={(e) => setCustomInput(e.target.value)}
-                style={{ width: '100%', height: '100%', backgroundColor: 'transparent', color: '#fff', border: 'none', padding: '1.25rem', fontFamily: 'var(--font-family-code)', outline: 'none', resize: 'none', fontSize: '0.9rem', lineHeight: '1.6' }}
-                placeholder="Enter inputs here..."
+              <div 
+                ref={terminalRef} 
+                style={{ flex: 1, padding: '1rem', width: '100%', height: '100%' }}
               />
-            </div>
-            
-            <div style={{ 
-              flex: 1, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              borderRadius: 'var(--border-radius-lg)', 
-              overflow: 'hidden',
-              border: '1px solid var(--border-color)',
-              backgroundColor: '#0a0a0a',
-              boxShadow: 'var(--shadow-lg)'
-            }}>
-              <div style={{ padding: '0.75rem 1rem', backgroundColor: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Output Terminal (stdout)
-              </div>
-              <div style={{ padding: '1.25rem', flex: 1, overflowY: 'auto', backgroundColor: 'transparent', fontFamily: 'var(--font-family-code)', whiteSpace: 'pre-wrap', color: '#a3be8c', fontSize: '0.9rem', lineHeight: '1.6' }}>
-                {output ? (
-                  <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>{output}</div>
-                ) : (
-                  <span style={{ color: '#334155' }}>Run your code to see the output here...</span>
-                )}
-              </div>
             </div>
           </div>
         </div>

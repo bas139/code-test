@@ -1,29 +1,41 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PlayCircle, Target, Filter, Search, CheckCircle, Code2, Hash } from 'lucide-react';
+import { PlayCircle, Target, Filter, Search, CheckCircle, Code2, Hash, Plus } from 'lucide-react';
+import { useUser } from '../contexts/UserContext';
 import { problemsData } from '../data/problems';
 
 export default function Home() {
   const [filter, setFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All'); // All, Solved, Unsolved
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [solvedProblems, setSolvedProblems] = useState([]);
+  const [customProblems, setCustomProblems] = useState([]);
+  const { userData } = useUser();
+  const solvedProblems = userData.solvedProblems || [];
   const itemsPerPage = 30;
 
   React.useEffect(() => {
-    const solved = JSON.parse(localStorage.getItem('solvedProblems') || '[]');
-    setSolvedProblems(solved);
+    const loaded = JSON.parse(localStorage.getItem('customProblems') || '[]');
+    setCustomProblems(loaded);
   }, []);
+
+  const allProblems = [...customProblems, ...problemsData];
 
   const handleFilterChange = (newFilter) => {
     setFilter(newFilter);
     setCurrentPage(1);
   };
 
-  const filteredProblems = problemsData.filter(problem => {
+  const filteredProblems = allProblems.filter(problem => {
     const matchesFilter = filter === 'All' || problem.diff === filter;
+    
+    let matchesStatus = true;
+    if (statusFilter === 'Solved') matchesStatus = solvedProblems.includes(problem.id);
+    if (statusFilter === 'Unsolved') matchesStatus = !solvedProblems.includes(problem.id);
+
     const matchesSearch = problem.title.toLowerCase().includes(searchQuery.toLowerCase()) || problem.id.includes(searchQuery);
-    return matchesFilter && matchesSearch;
+    const isNotQuiz = problem.type !== 'quiz';
+    return matchesFilter && matchesSearch && isNotQuiz && matchesStatus;
   });
 
   const totalPages = Math.ceil(filteredProblems.length / itemsPerPage);
@@ -63,12 +75,18 @@ export default function Home() {
         </div>
       </div>
       
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <Link to="/create-problem" style={{ textDecoration: 'none' }}>
+          <button className="btn" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--color-secondary)', color: 'white' }}>
+            <Plus size={18} /> สร้างโจทย์ใหม่
+          </button>
+        </Link>
+        <div style={{ width: '2px', backgroundColor: 'var(--border-color)', margin: '0 0.5rem' }}></div>
         <button 
           className={`btn ${filter === 'All' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => handleFilterChange('All')}
         >
-          All
+          All Difficulties
         </button>
         <button 
           className={`btn ${filter === 'Easy' ? 'btn-primary' : 'btn-secondary'}`}
@@ -90,6 +108,27 @@ export default function Home() {
           style={{ borderColor: filter === 'Hard' ? 'var(--color-error)' : '', color: filter === 'Hard' ? '#fff' : 'var(--color-error)' }}
         >
           Hard
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
+        <button 
+          className={`btn ${statusFilter === 'All' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => { setStatusFilter('All'); setCurrentPage(1); }}
+        >
+          All Status
+        </button>
+        <button 
+          className={`btn ${statusFilter === 'Unsolved' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => { setStatusFilter('Unsolved'); setCurrentPage(1); }}
+        >
+          Unsolved
+        </button>
+        <button 
+          className={`btn ${statusFilter === 'Solved' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => { setStatusFilter('Solved'); setCurrentPage(1); }}
+        >
+          Solved
         </button>
       </div>
       
@@ -130,9 +169,9 @@ export default function Home() {
               {problem.description_th || "โจทย์ปัญหาการเขียนโปรแกรมที่จะท้าทายความสามารถของคุณ ลองแก้ปัญหานี้ดูสิ!"}
             </p>
             
-            <Link to={`/lesson/${problem.id}`} style={{ width: '100%', textDecoration: 'none' }}>
+            <Link to={problem.type === 'quiz' ? `/quiz/${problem.id}` : `/lesson/${problem.id}`} style={{ width: '100%', textDecoration: 'none' }}>
               <button className="btn btn-primary" style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}>
-                <PlayCircle size={18} /> Solve Problem
+                <PlayCircle size={18} /> {problem.type === 'quiz' ? 'Take Quiz' : 'Solve Problem'}
               </button>
             </Link>
           </div>

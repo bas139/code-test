@@ -1245,4 +1245,48 @@ export const coursesData = [
       }
     ]
   }
+  ,
+  {
+    "id": "cppreference-stl",
+    "category": "coding",
+    "title": "เจาะลึก C++ STL (อ้างอิงจาก CppReference)",
+    "description": "รวบรวมตัวอย่างและโจทย์การใช้งาน C++ Standard Library (STL) เช่น Vector, Map, Sort และอื่นๆ อ้างอิงจาก cppreference.com",
+    "icon": "Code",
+    "color": "#8b5cf6",
+    "episodes": [
+      {
+        "id": "ep1",
+        "title": "std::vector (Dynamic Array)",
+        "youtubeId": "B7LHCxCmrz0",
+        "summary": "std::vector คือคลาสสำหรับจัดการอาเรย์ที่ปรับขนาดได้อัตโนมัติ",
+        "howToUse": "เหมาะสำหรับเรียนรู้การใช้งานพื้นฐานของ Vector",
+        "examples": "std::vector<int> v = {1, 2, 3}; v.push_back(4);",
+        "problems": [
+          "cpp_stl_01"
+        ]
+      },
+      {
+        "id": "ep2",
+        "title": "std::map (Key-Value Store)",
+        "youtubeId": "B7LHCxCmrz0",
+        "summary": "std::map คือคลาสสำหรับจัดการข้อมูลแบบ Key-Value คู่กันเรียงตาม Key",
+        "howToUse": "เหมาะสำหรับเรียนรู้การจับคู่ข้อมูล",
+        "examples": "std::map<string, int> m; m[\"apple\"] = 5;",
+        "problems": [
+          "cpp_stl_02"
+        ]
+      },
+      {
+        "id": "ep3",
+        "title": "std::sort (การเรียงลำดับข้อมูล)",
+        "youtubeId": "B7LHCxCmrz0",
+        "summary": "std::sort เป็นอัลกอริทึมมาตรฐานที่เร็วและใช้งานง่ายในการเรียงข้อมูลใน Container",
+        "howToUse": "เหมาะสำหรับใช้จัดการข้อมูลที่ต้องการความมีระเบียบ",
+        "examples": "std::sort(v.begin(), v.end());",
+        "problems": [
+          "cpp_stl_03"
+        ]
+      }
+    ]
+  }
 ];

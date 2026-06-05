@@ -3,24 +3,25 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, XCircle, Send } from 'lucide-react';
 import { problemsData } from '../data/problems';
 import confetti from 'canvas-confetti';
+import { useUser } from '../contexts/UserContext';
 
 export default function QuizView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const problem = problemsData.find(p => p.id === id);
+  const { userData, addXP, markProblemSolved } = useUser();
   
   const [answer, setAnswer] = useState('');
   const [status, setStatus] = useState('idle'); // idle, correct, incorrect
   const [isSolved, setIsSolved] = useState(false);
 
   useEffect(() => {
-    const solved = JSON.parse(localStorage.getItem('solvedProblems') || '[]');
-    if (solved.includes(id)) {
+    if (userData.solvedProblems.includes(id)) {
       setIsSolved(true);
       setStatus('correct');
       setAnswer(problem?.answer || '');
     }
-  }, [id, problem]);
+  }, [id, problem, userData.solvedProblems]);
 
   if (!problem) {
     return (
@@ -42,10 +43,9 @@ export default function QuizView() {
       setStatus('correct');
       setIsSolved(true);
       
-      const solved = JSON.parse(localStorage.getItem('solvedProblems') || '[]');
-      if (!solved.includes(id)) {
-        solved.push(id);
-        localStorage.setItem('solvedProblems', JSON.stringify(solved));
+      if (!userData.solvedProblems.includes(id)) {
+        markProblemSolved(id);
+        addXP(10); // Reward 10 XP for a quiz
       }
 
       // Trigger confetti celebration!

@@ -1,26 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Terminal, LayoutDashboard, Trophy, BookOpen, GraduationCap, Zap } from 'lucide-react';
-import { calculateXP, getLevelInfo } from '../utils/gamification';
+import { Terminal, LayoutDashboard, Trophy, BookOpen, GraduationCap, Zap, Sun, Moon, LogIn } from 'lucide-react';
+import { getLevelInfo } from '../utils/gamification';
+import { useAuth } from '../contexts/AuthContext';
+import { useUser } from '../contexts/UserContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function Navbar() {
   const location = useLocation();
+  const { user, loginWithGoogle } = useAuth();
+  const { userData } = useUser();
+  const { isDarkMode, toggleTheme } = useTheme();
+  
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const isActive = (path) => {
     return location.pathname === path ? 'active' : '';
   };
 
-  const [solvedCount, setSolvedCount] = useState(0);
+  const { level } = getLevelInfo(userData.xp);
 
-  // Re-calculate XP when path changes (easy way to trigger updates)
-  useEffect(() => {
-    const solved = JSON.parse(localStorage.getItem('solvedProblems') || '[]');
-    setSolvedCount(solved.length);
-  }, [location.pathname]);
-
-  const solved = JSON.parse(localStorage.getItem('solvedProblems') || '[]');
-  const xp = calculateXP(solved);
-  const { level, rank } = getLevelInfo(xp);
+  const handleLogin = async () => {
+    setIsLoggingIn(true);
+    await loginWithGoogle();
+    setIsLoggingIn(false);
+  };
 
   return (
     <nav className="navbar">
@@ -50,12 +54,39 @@ export default function Navbar() {
         </Link>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <button 
+          onClick={toggleTheme} 
+          style={{ 
+            background: 'none', 
+            border: 'none', 
+            color: 'var(--color-text-main)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0.4rem'
+          }}
+          title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+        >
+          {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 1rem', borderRadius: '20px', backgroundColor: 'rgba(249, 115, 22, 0.1)', border: '1px solid var(--color-primary)' }}>
           <Zap size={16} color="var(--color-primary)" />
           <span style={{ fontWeight: 'bold', color: 'var(--color-primary)', fontSize: '0.9rem' }}>Lvl {level}</span>
-          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>({xp} XP)</span>
+          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>({userData.xp} XP)</span>
         </div>
-        <button className="btn btn-primary" style={{ padding: '0.4rem 1rem' }}>Sign In</button>
+        
+        {user ? (
+          <Link to="/profile" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none', color: 'inherit' }}>
+            <img src={user.photoURL} alt="Avatar" style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--color-bg-base)' }} />
+            <span style={{ fontWeight: '500' }}>{user.displayName}</span>
+          </Link>
+        ) : (
+          <button className="btn btn-primary" onClick={handleLogin} disabled={isLoggingIn} style={{ padding: '0.4rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {isLoggingIn ? <div className="spinner" style={{ width: 16, height: 16, border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%' }}></div> : <LogIn size={16} />}
+            {isLoggingIn ? '...' : 'Sign In'}
+          </button>
+        )}
       </div>
     </nav>
   );

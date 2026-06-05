@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Target, Flame, Star, Code2, Trophy, Zap, Shield } from 'lucide-react';
-import { calculateXP, getLevelInfo } from '../utils/gamification';
+import { getLevelInfo } from '../utils/gamification';
+import { useUser } from '../contexts/UserContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const activityData = [
   { name: 'Mon', score: 120 },
@@ -21,22 +23,17 @@ const languageData = [
 ];
 
 export default function Dashboard() {
-  const [solvedProblems, setSolvedProblems] = useState([]);
-
-  useEffect(() => {
-    const solved = JSON.parse(localStorage.getItem('solvedProblems') || '[]');
-    setSolvedProblems(solved);
-  }, []);
-
-  const xp = calculateXP(solvedProblems);
-  const { level, rank, nextLevelXP, progressPercent } = getLevelInfo(xp);
+  const { userData } = useUser();
+  const { user } = useAuth();
+  
+  const { level, rank, nextLevelXP, progressPercent } = getLevelInfo(userData.xp);
 
   return (
     <div className="container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem' }}>
         <div>
           <h2 className="text-gradient" style={{ marginBottom: '0.5rem', fontSize: '2.5rem' }}>Coder Profile</h2>
-          <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: '1.1rem' }}>Welcome back, Hacker!</p>
+          <p style={{ color: 'var(--color-text-muted)', margin: 0, fontSize: '1.1rem' }}>Welcome back, {user ? user.displayName : 'Hacker'}!</p>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--color-bg-base)', padding: '0.5rem 1rem', borderRadius: '30px', border: '1px solid var(--border-color)' }}>
@@ -55,11 +52,11 @@ export default function Dashboard() {
             </div>
             <div>
               <h3 style={{ margin: '0 0 0.3rem 0', fontSize: '1.5rem', color: 'var(--color-text-main)' }}>Level {level}</h3>
-              <p style={{ margin: 0, color: 'var(--color-primary-light)', fontWeight: 'bold' }}>{xp} / {nextLevelXP} XP</p>
+              <p style={{ margin: 0, color: 'var(--color-primary-light)', fontWeight: 'bold' }}>{userData.xp} / {nextLevelXP} XP</p>
             </div>
           </div>
           <div style={{ textAlign: 'right', color: 'var(--color-text-muted)' }}>
-            <p style={{ margin: 0 }}>{nextLevelXP - xp} XP to Level {level + 1}</p>
+            <p style={{ margin: 0 }}>{nextLevelXP - userData.xp} XP to Level {level + 1}</p>
           </div>
         </div>
         
@@ -83,7 +80,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Total Experience</p>
-            <h3 style={{ margin: '0.3rem 0 0 0', fontSize: '1.8rem', color: 'var(--color-text-main)' }}>{xp}</h3>
+            <h3 style={{ margin: '0.3rem 0 0 0', fontSize: '1.8rem', color: 'var(--color-text-main)' }}>{userData.xp}</h3>
           </div>
         </div>
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', transition: 'transform 0.2s', cursor: 'default' }} onMouseEnter={e => e.currentTarget.style.transform='translateY(-5px)'} onMouseLeave={e => e.currentTarget.style.transform='translateY(0)'}>
@@ -101,7 +98,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Problems Solved</p>
-            <h3 style={{ margin: '0.3rem 0 0 0', fontSize: '1.8rem', color: 'var(--color-text-main)' }}>{solvedProblems.length}</h3>
+            <h3 style={{ margin: '0.3rem 0 0 0', fontSize: '1.8rem', color: 'var(--color-text-main)' }}>{userData.solvedProblems.length}</h3>
           </div>
         </div>
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', transition: 'transform 0.2s', cursor: 'default' }} onMouseEnter={e => e.currentTarget.style.transform='translateY(-5px)'} onMouseLeave={e => e.currentTarget.style.transform='translateY(0)'}>
@@ -110,7 +107,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Global Rank</p>
-            <h3 style={{ margin: '0.3rem 0 0 0', fontSize: '1.8rem', color: 'var(--color-text-main)' }}>#{Math.max(1, 1000 - xp)}</h3>
+            <h3 style={{ margin: '0.3rem 0 0 0', fontSize: '1.8rem', color: 'var(--color-text-main)' }}>#{Math.max(1, 1000 - userData.xp)}</h3>
           </div>
         </div>
       </div>

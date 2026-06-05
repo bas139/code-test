@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, Medal, User } from 'lucide-react';
-import { calculateXP } from '../utils/gamification';
+import { useUser } from '../contexts/UserContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const MOCK_LEADERBOARD = [
   { id: 'mock1', name: 'Alice Coder', score: 1420, language: 'Python', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alice' },
@@ -12,17 +13,18 @@ const MOCK_LEADERBOARD = [
 
 export default function Leaderboard() {
   const [leaderboard, setLeaderboard] = useState([]);
+  const { userData } = useUser();
+  const { user } = useAuth();
 
   useEffect(() => {
-    const solved = JSON.parse(localStorage.getItem('solvedProblems') || '[]');
-    const userXP = calculateXP(solved);
+    const userXP = userData.xp;
 
     const currentUser = {
       id: 'current_user',
-      name: 'You (Hacker)',
+      name: user ? user.displayName : 'You (Hacker)',
       score: userXP,
       language: 'Any',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=You'
+      avatar: user ? user.photoURL : 'https://api.dicebear.com/7.x/avataaars/svg?seed=You'
     };
 
     const combined = [...MOCK_LEADERBOARD, currentUser].sort((a, b) => b.score - a.score);
@@ -34,7 +36,7 @@ export default function Leaderboard() {
     }));
 
     setLeaderboard(ranked);
-  }, []);
+  }, [userData.xp, user]);
 
   return (
     <div className="container" style={{ maxWidth: '800px' }}>
