@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
-import { Play, Loader2, Sparkles, ArrowLeft, Globe, Settings, ChevronDown, Terminal, Upload, Square, CheckCircle, XCircle } from 'lucide-react';
+import { Play, Loader2, Sparkles, ArrowLeft, Globe, Settings, ChevronDown, Terminal, Upload, Square, CheckCircle, XCircle, RefreshCw, MessageSquare, PlayCircle, SkipForward } from 'lucide-react';
+import { defineMonacoTheme } from '../utils/monacoTheme';
 import { problemsData } from '../data/problems';
 import { setupAutocomplete } from '../utils/autocomplete';
 import confetti from 'canvas-confetti';
@@ -193,6 +194,7 @@ export default function LessonView() {
   }, [showTerminal]);
 
   const handleEditorWillMount = (monaco) => {
+    defineMonacoTheme(monaco);
     // Only register autocomplete once
     if (!monaco.languages.getLanguages().some(lang => lang.id === 'cpp_custom_loaded')) {
       setupAutocomplete(monaco);
@@ -711,7 +713,7 @@ export default function LessonView() {
             <Editor
               height="100%"
               language={language === 'c++' ? 'cpp' : language}
-              theme="vs-dark"
+              theme="custom-dark"
               value={code}
               beforeMount={handleEditorWillMount}
               onMount={handleEditorDidMount}

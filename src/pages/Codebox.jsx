@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Editor, { useMonaco } from '@monaco-editor/react';
-import { Play, Loader2, Code2, Terminal as TerminalIcon, Settings, ChevronDown, Upload, Square, Sparkles } from 'lucide-react';
+import { Play, Loader2, Code2, Terminal as TerminalIcon, Settings, ChevronDown, Upload, Square, Sparkles, XCircle, ArrowLeft, RefreshCw, MessageSquare } from 'lucide-react';
+import { defineMonacoTheme } from '../utils/monacoTheme';
 import { setupAutocomplete } from '../utils/autocomplete';
 import { Terminal as XTerminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -148,6 +149,7 @@ export default function Codebox() {
   }, []);
 
   const handleEditorWillMount = (monaco) => {
+    defineMonacoTheme(monaco);
     // Only register autocomplete once
     if (!monaco.languages.getLanguages().some(lang => lang.id === 'cpp_custom_loaded')) {
       setupAutocomplete(monaco);
@@ -410,7 +412,7 @@ export default function Codebox() {
           <Editor
             height="100%"
             language={language === 'c++' ? 'cpp' : language}
-            theme="vs-dark"
+            theme="custom-dark"
             value={code}
             beforeMount={handleEditorWillMount}
             onMount={handleEditorDidMount}
