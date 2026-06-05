@@ -106,9 +106,8 @@ io.on('connection', (socket) => {
 
       child.on('close', (code) => {
         const timeTaken = ((Date.now() - startTime) / 1000).toFixed(3);
-        const codeHex = code !== null ? code.toString(16) : '0';
-        socket.emit('output', `\r\n\x1b[33mProcess returned ${code} (0x${codeHex})   execution time : ${timeTaken} s\x1b[0m\r\n`);
-        socket.emit('output', '\x1b[33mPress any key to continue.\x1b[0m\r\n');
+        const codeHex = code !== null ? code.toString(16).toUpperCase() : '0';
+        socket.emit('exit_info', { code, codeHex, timeTaken });
         socket.emit('exit');
         processes.delete(socket.id);
         
@@ -186,6 +185,138 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
+});
+
+// REST API for Automated Testcase Execution
+app.post('/api/execute', async (req, res) => {
+  const { code, language, input = '', timeout = 5000 } = req.body;
+  if (!code || !language) {
+    return res.status(400).json({ error: 'Code and language are required' });
+  }
+
+  const sessionId = uuidv4();
+  const sessionDir = path.join(tempDir, sessionId);
+  fs.mkdirSync(sessionDir, { recursive: true });
+
+  const fileMap = {
+    'c': 'main.c',
+    'c++': 'main.cpp',
+    'java': 'Main.java',
+    'python': 'main.py',
+    'javascript': 'main.js'
+  };
+
+  const fileName = fileMap[language] || 'main.txt';
+  const filePath = path.join(sessionDir, fileName);
+  fs.writeFileSync(filePath, code);
+
+  let processCmd = '';
+  let processArgs = [];
+  let isCompiled = false;
+  let compileCmd = '';
+  let compileArgs = [];
+
+  if (language === 'c') {
+    isCompiled = true;
+    compileCmd = 'gcc';
+    compileArgs = [filePath, '-o', path.join(sessionDir, 'main.exe')];
+    processCmd = path.join(sessionDir, 'main.exe');
+  } else if (language === 'c++') {
+    isCompiled = true;
+    compileCmd = 'g++';
+    compileArgs = [filePath, '-o', path.join(sessionDir, 'main.exe')];
+    processCmd = path.join(sessionDir, 'main.exe');
+  } else if (language === 'java') {
+    isCompiled = true;
+    compileCmd = 'javac';
+    compileArgs = [filePath];
+    processCmd = 'java';
+    processArgs = ['-cp', sessionDir, 'Main'];
+  } else if (language === 'python') {
+    processCmd = 'python';
+    processArgs = [filePath];
+  } else if (language === 'javascript') {
+    processCmd = 'node';
+    processArgs = [filePath];
+  } else {
+    fs.rmSync(sessionDir, { recursive: true, force: true });
+    return res.status(400).json({ error: `Language ${language} not supported` });
+  }
+
+  const runCode = () => {
+    const startTime = Date.now();
+    const child = spawn(processCmd, processArgs, { cwd: sessionDir });
+
+    let stdout = '';
+    let stderr = '';
+
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      stderr += '\nError: Execution Timed Out (Possible Infinite Loop)';
+    }, timeout);
+
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    if (input) {
+      child.stdin.write(input);
+      child.stdin.end();
+    }
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const executionTime = ((Date.now() - startTime) / 1000).toFixed(3);
+      fs.rm(sessionDir, { recursive: true, force: true }, () => {});
+      
+      res.json({
+        stdout: stdout.trimEnd(),
+        stderr: stderr.trimEnd(),
+        exitCode: code,
+        executionTime
+      });
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      fs.rm(sessionDir, { recursive: true, force: true }, () => {});
+      res.status(500).json({ error: `Failed to start process: ${err.message}` });
+    });
+  };
+
+  if (isCompiled) {
+    const compiler = spawn(compileCmd, compileArgs, { cwd: sessionDir });
+    let compileError = '';
+
+    compiler.stderr.on('data', (data) => {
+      compileError += data.toString();
+    });
+
+    compiler.on('close', (code) => {
+      if (code === 0) {
+        runCode();
+      } else {
+        fs.rm(sessionDir, { recursive: true, force: true }, () => {});
+        res.json({
+          stdout: '',
+          stderr: `Compilation failed:\n${compileError}`,
+          exitCode: code,
+          executionTime: 0
+        });
+      }
+    });
+
+    compiler.on('error', (err) => {
+      fs.rm(sessionDir, { recursive: true, force: true }, () => {});
+      res.status(500).json({ error: `Failed to start compiler: ${err.message}` });
+    });
+  } else {
+    runCode();
+  }
 });
 
 // For any other routes, serve the React frontend index.html

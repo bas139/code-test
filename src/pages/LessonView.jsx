@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
-import { Play, Loader2, Sparkles, ArrowLeft, Globe, Settings, ChevronDown, Terminal, Upload, Square } from 'lucide-react';
+import { Play, Loader2, Sparkles, ArrowLeft, Globe, Settings, ChevronDown, Terminal, Upload, Square, CheckCircle, XCircle } from 'lucide-react';
 import { problemsData } from '../data/problems';
 import { setupAutocomplete } from '../utils/autocomplete';
 import confetti from 'canvas-confetti';
@@ -57,6 +57,8 @@ export default function LessonView() {
   const [showHint, setShowHint] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [testResults, setTestResults] = useState(null);
+  const [showTestResults, setShowTestResults] = useState(false);
   
   const pyodideRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -159,6 +161,17 @@ export default function LessonView() {
 
     socket.on('output', (data) => {
       term.write(data);
+    });
+
+    socket.on('exit_info', ({ code, codeHex, timeTaken }) => {
+      if (xtermRef.current) {
+        // If the cursor is not at the beginning of the line, add a newline
+        if (xtermRef.current.buffer.active.cursorX > 0) {
+          xtermRef.current.writeln('');
+        }
+        xtermRef.current.writeln(`\x1b[33mProcess returned ${code} (0x${codeHex})   execution time : ${timeTaken} s\x1b[0m`);
+        xtermRef.current.writeln('\x1b[33mPress any key to continue.\x1b[0m');
+      }
     });
 
     socket.on('exit', () => {
@@ -313,6 +326,7 @@ export default function LessonView() {
   const handleRunCode = () => {
     setIsLoading(true);
     setShowTerminal(true);
+    setShowTestResults(false);
     isFinishedRef.current = false;
     currentLineRef.current = '';
     
@@ -339,19 +353,11 @@ export default function LessonView() {
 
   const handleSubmitCode = async () => {
     setIsLoading(true);
-    setShowTerminal(true);
+    setShowTestResults(true);
+    setShowTerminal(false);
     isFinishedRef.current = true;
     
-    setTimeout(() => {
-      if (xtermRef.current) {
-        xtermRef.current.reset();
-        xtermRef.current.options.disableStdin = true;
-        xtermRef.current.writeln('Running testcases...\r\n');
-      }
-    }, 100);
-
-    await new Promise(r => setTimeout(r, 150));
-    let allPassed = true;
+    setTestResults({ status: 'running', passed: 0, total: problem?.testcases?.length || 0, details: [] });
 
     if (editorRef.current && monacoRef.current) {
       monacoRef.current.editor.setModelMarkers(editorRef.current.getModel(), "python", []);
@@ -360,40 +366,85 @@ export default function LessonView() {
 
     try {
       if (!problem?.testcases?.length) {
-        xtermRef.current.writeln('\x1b[31m❌ Error: No testcases found for this problem.\x1b[0m');
-        xtermRef.current.writeln('\r\n\x1b[33mPress any key to continue.\x1b[0m');
+        setTestResults({ status: 'error', error: 'No testcases found for this problem.' });
         setIsLoading(false);
         return;
       }
 
       let passedCount = 0;
       const totalCases = problem.testcases.length;
+      const details = [];
+
+      const apiUrl = window.location.port === '5173' ? 'http://localhost:3001/api/execute' : `${window.location.origin}/api/execute`;
 
       for (let i = 0; i < totalCases; i++) {
         const tc = problem.testcases[i];
-        xtermRef.current.write(`Testcase ${i + 1}/${totalCases}... `);
-
-        const result = await executeCode(tc.input || '');
         
-        const normalize = (str) => String(str).split('\n').map(l => l.trimEnd()).join('\n').trimEnd();
-
-        if (normalize(result) === normalize(tc.expected)) {
-          xtermRef.current.writeln('\x1b[32m✅ Passed\x1b[0m');
-          passedCount++;
-        } else {
-          xtermRef.current.writeln('\x1b[31m❌ Failed\x1b[0m');
-          xtermRef.current.writeln(`\r\nInput:\r\n${(tc.input || '(None)').replace(/\n/g, '\r\n')}\r\n`);
-          xtermRef.current.writeln(`Expected:\r\n${tc.expected.replace(/\n/g, '\r\n')}\r\n`);
-          xtermRef.current.writeln(`Actual:\r\n${result.replace(/\n/g, '\r\n')}\r\n`);
-          allPassed = false;
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code,
+              language,
+              input: tc.input || '',
+              timeout: 5000
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error('Server error during execution');
+          }
+          
+          const result = await response.json();
+          
+          if (result.error || result.stderr) {
+            const errStr = result.error || result.stderr;
+            details.push({
+               index: i + 1,
+               passed: false,
+               input: tc.input,
+               expected: tc.expected,
+               actual: errStr,
+               error: true,
+               time: result.executionTime
+            });
+            setTestResults({ status: 'running', passed: passedCount, total: totalCases, details: [...details] });
+            continue;
+          }
+          
+          const normalize = (str) => String(str).split('\n').map(l => l.trimEnd()).join('\n').trimEnd();
+          const isPassed = normalize(result.stdout) === normalize(tc.expected);
+          
+          if (isPassed) passedCount++;
+          
+          details.push({
+            index: i + 1,
+            passed: isPassed,
+            input: tc.input,
+            expected: tc.expected,
+            actual: result.stdout,
+            time: result.executionTime
+          });
+          
+        } catch (err) {
+            details.push({
+               index: i + 1,
+               passed: false,
+               input: tc.input,
+               expected: tc.expected,
+               actual: err.message,
+               error: true
+            });
         }
+        
+        setTestResults({ status: 'running', passed: passedCount, total: totalCases, details: [...details] });
       }
 
-      const score = Math.round((passedCount / totalCases) * 100);
-      xtermRef.current.writeln(`\r\n=== Final Score: ${score}/100 ===`);
+      const allPassed = passedCount === totalCases;
+      setTestResults({ status: allPassed ? 'accepted' : 'rejected', passed: passedCount, total: totalCases, details });
 
       if (allPassed) {
-        xtermRef.current.writeln('\x1b[32m🎉 ACCEPTED! All testcases passed.\x1b[0m');
         if (!userData.solvedProblems.includes(problem.id)) {
           markProblemSolved(problem.id);
           addXP(25);
@@ -406,42 +457,8 @@ export default function LessonView() {
           colors: ['#f97316', '#8b5cf6', '#3b82f6', '#22c55e']
         });
       }
-      xtermRef.current.writeln('\r\n\x1b[33mPress any key to continue.\x1b[0m');
     } catch (error) {
-      const errorStr = error.toString();
-      const parsedError = parsePythonError(errorStr);
-      
-      if (parsedError && editorRef.current && monacoRef.current) {
-        const { lineNumber, errorMessage } = parsedError;
-        xtermRef.current.writeln(`\r\n\x1b[31m❌ Error on line ${lineNumber}:\r\n${errorMessage}\x1b[0m`);
-        
-        const model = editorRef.current.getModel();
-        monacoRef.current.editor.setModelMarkers(model, "python", [{
-          startLineNumber: lineNumber,
-          startColumn: 1,
-          endLineNumber: lineNumber,
-          endColumn: 1000,
-          message: errorMessage,
-          severity: monacoRef.current.MarkerSeverity.Error
-        }]);
-        
-        if (errorDecorationsRef.current) {
-          errorDecorationsRef.current.set([{
-            range: new monacoRef.current.Range(lineNumber, 1, lineNumber, 1),
-            options: {
-              isWholeLine: true,
-              className: 'error-lens-line',
-              after: {
-                content: `    ${errorMessage}`,
-                inlineClassName: 'error-lens-text'
-              }
-            }
-          }]);
-        }
-      } else {
-        xtermRef.current.writeln('\r\n\x1b[31mError: ' + errorStr.replace(/\n/g, '\r\n') + '\x1b[0m');
-      }
-      xtermRef.current.writeln('\r\n\x1b[33mPress any key to continue.\x1b[0m');
+       setTestResults({ status: 'error', error: error.toString() });
     } finally {
       setIsLoading(false);
     }
@@ -525,7 +542,7 @@ export default function LessonView() {
         {/* Right Panel: Editor and Output */}
         <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ 
-            flex: showTerminal ? 1 : 2, 
+            flex: (showTerminal || showTestResults) ? 1 : 2, 
             display: 'flex', 
             flexDirection: 'column', 
             borderRadius: 'var(--border-radius-lg)', 
@@ -685,6 +702,108 @@ export default function LessonView() {
                 cursorBlinking: 'smooth'
               }}
             />
+          </div>
+
+          
+          {/* Test Results Panel */}
+          <div style={{ 
+            flex: showTestResults ? 1 : 0, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '1rem',
+            height: showTestResults ? 'auto' : '0px',
+            opacity: showTestResults ? 1 : 0,
+            overflow: 'hidden',
+            transition: 'all 0.3s ease-in-out'
+          }}>
+            <div style={{ 
+              flex: 1, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              borderRadius: 'var(--border-radius-lg)', 
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--color-bg-base)',
+              boxShadow: 'var(--shadow-lg)',
+              overflow: 'hidden'
+            }}>
+              <div style={{ 
+                padding: '0.75rem 1rem', 
+                backgroundColor: 'var(--color-bg-surface)', 
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Play size={16} color="var(--color-primary)" />
+                  <span style={{ fontSize: '0.9rem', color: 'var(--color-text-main)', fontWeight: 'bold' }}>
+                    Test Results
+                  </span>
+                  {testResults && testResults.status === 'running' && (
+                     <span style={{ marginLeft: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                       Running {testResults.passed} / {testResults.total}...
+                     </span>
+                  )}
+                  {testResults && testResults.status === 'accepted' && (
+                     <span style={{ marginLeft: '1rem', fontSize: '0.9rem', color: 'var(--color-success)', fontWeight: 'bold' }}>
+                       Accepted! 🎉
+                     </span>
+                  )}
+                  {testResults && testResults.status === 'rejected' && (
+                     <span style={{ marginLeft: '1rem', fontSize: '0.9rem', color: 'var(--color-error)', fontWeight: 'bold' }}>
+                       Rejected ❌
+                     </span>
+                  )}
+                  {testResults && testResults.status === 'error' && (
+                     <span style={{ marginLeft: '1rem', fontSize: '0.9rem', color: 'var(--color-error)', fontWeight: 'bold' }}>
+                       Error
+                     </span>
+                  )}
+                </div>
+                <button 
+                  onClick={() => setShowTestResults(false)}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', padding: '0.25rem' }}
+                >
+                  <Square size={14} />
+                </button>
+              </div>
+              <div style={{ flex: 1, padding: '1rem', overflowY: 'auto' }}>
+                 {testResults && testResults.error && (
+                    <div style={{ color: 'var(--color-error)' }}>{testResults.error}</div>
+                 )}
+                 {testResults && testResults.details && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {testResults.details.map((tc, idx) => (
+                         <div key={idx} style={{ 
+                            padding: '1rem', 
+                            borderRadius: 'var(--border-radius-md)', 
+                            border: `1px solid ${tc.passed ? 'var(--color-success)' : 'var(--color-error)'}`,
+                            backgroundColor: tc.passed ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)'
+                         }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                               {tc.passed ? <CheckCircle size={16} color="var(--color-success)" /> : <XCircle size={16} color="var(--color-error)" />}
+                               Testcase {tc.index}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
+                               <div>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Input</div>
+                                  <pre style={{ margin: 0, padding: '0.5rem', backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px', fontSize: '0.85rem' }}>{tc.input || '(None)'}</pre>
+                               </div>
+                               <div>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Expected</div>
+                                  <pre style={{ margin: 0, padding: '0.5rem', backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px', fontSize: '0.85rem' }}>{tc.expected}</pre>
+                               </div>
+                               <div>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Actual</div>
+                                  <pre style={{ margin: 0, padding: '0.5rem', backgroundColor: 'var(--color-bg-surface)', borderRadius: '4px', fontSize: '0.85rem', color: tc.error ? 'var(--color-error)' : 'inherit' }}>{tc.actual}</pre>
+                               </div>
+                            </div>
+                         </div>
+                      ))}
+                    </div>
+                 )}
+              </div>
+            </div>
           </div>
 
           {/* Bottom Panel: Terminal */}
